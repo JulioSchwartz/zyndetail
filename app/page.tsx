@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -14,7 +15,7 @@ export default function Home() {
         router.push('/auth/login')
       }
     })
-  }, [])
+  }, [router])
 
   return (
     <div style={{
