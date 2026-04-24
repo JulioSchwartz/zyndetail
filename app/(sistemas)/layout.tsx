@@ -116,7 +116,7 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <a href="/configuracoes" style={{
-            color: '#718096', fontSize: 13, textDecoration: 'none',
+            fontSize: 13, textDecoration: 'none',
             padding: '6px 12px', borderRadius: 8,
             color: pathname === '/configuracoes' ? '#D4A843' : '#718096',
           }}>⚙️</a>
