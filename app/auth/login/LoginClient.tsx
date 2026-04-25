@@ -13,25 +13,18 @@ export default function LoginClient() {
   async function entrar() {
     setLoading(true)
     setErro('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
-    if (error) {
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha })
+
+    if (error || !data.session) {
       setErro('E-mail ou senha incorretos')
       setLoading(false)
       return
     }
 
-    // Aguarda a sessão ser persistida antes de redirecionar
-    await new Promise<void>((resolve) => {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          subscription.unsubscribe()
-          resolve()
-        }
-      })
-      // Fallback: redireciona em até 2s mesmo sem evento
-      setTimeout(resolve, 2000)
-    })
-
+    // Aguarda 800ms para garantir que o cookie de sessão foi persistido
+    await new Promise(res => setTimeout(res, 800))
+    router.refresh()
     router.push('/dashboard')
   }
 
