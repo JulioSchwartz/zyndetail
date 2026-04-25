@@ -1,43 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useEmpresa } from '@/hooks/useEmpresa'
 
 export default function SistemasLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { empresaId, loading } = useEmpresa()
-  const [verificado, setVerificado] = useState(false)
   const [menuAberto, setMenuAberto] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) router.push('/auth/login')
-    })
-  }, [router])
-
-  useEffect(() => {
-    if (loading) return
-
-    if (!empresaId) {
-      if (pathname !== '/setup') router.push('/setup')
-      setVerificado(true)
-      return
-    }
-
-    if (pathname === '/setup') {
-      setVerificado(true)
-      return
-    }
-
-    supabase.from('empresas_detail').select('nome').eq('id', empresaId).single().then(({ data }) => {
-      if (!data || !data.nome || data.nome.includes('@')) {
-        router.push('/setup')
-      }
-      setVerificado(true)
-    })
-  }, [empresaId, loading, pathname, router])
 
   async function sair() {
     await supabase.auth.signOut()
@@ -51,19 +20,6 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
     { href: '/ordens', label: '🔧 Ordens de Serviço' },
     { href: '/agenda', label: '📅 Agenda' },
   ]
-
-  if (!verificado && pathname !== '/setup') {
-    return (
-      <div style={{ minHeight: '100vh', background: '#0A0F1E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ background: '#D4A843', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-            <span style={{ color: '#0A0F1E', fontSize: 22, fontWeight: 900 }}>Z</span>
-          </div>
-          <p style={{ color: '#2B6CB0', fontWeight: 700, fontSize: 13, letterSpacing: 2 }}>CARREGANDO...</p>
-        </div>
-      </div>
-    )
-  }
 
   if (pathname === '/setup') return <>{children}</>
 
@@ -84,7 +40,6 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
         zIndex: 100,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Hamburger mobile */}
           <button onClick={() => setMenuAberto(!menuAberto)}
             className="hamburger"
             style={{ background: 'transparent', border: 'none', color: '#D4A843', fontSize: 20, cursor: 'pointer', display: 'none' }}>
@@ -101,7 +56,6 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
           </div>
         </div>
 
-        {/* MENU DESKTOP */}
         <nav style={{ display: 'flex', gap: 2 }} className="nav-desktop">
           {menu.map(item => (
             <a key={item.href} href={item.href}
@@ -134,7 +88,6 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
         </div>
       </div>
 
-      {/* MENU MOBILE */}
       {menuAberto && (
         <div style={{ background: '#0A0F1E', borderBottom: '1px solid rgba(43,108,176,0.2)', padding: '8px 16px' }} className="nav-mobile">
           {menu.map(item => (
@@ -147,7 +100,6 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
         </div>
       )}
 
-      {/* CONTEÚDO */}
       <main style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
         {children}
       </main>
