@@ -15,22 +15,29 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) router.push('/auth/login')
     })
-  }, [])
+  }, [router])
 
-  // Verifica primeiro acesso — sem loja configurada → /setup
   useEffect(() => {
-    if (loading || !empresaId || pathname === '/setup') {
+    if (loading) return
+
+    if (!empresaId) {
+      if (pathname !== '/setup') router.push('/setup')
       setVerificado(true)
       return
     }
-    supabase.from('empresas_detail').select('nome, logo_url').eq('id', empresaId).single().then(({ data }) => {
-      // Se não tem nome configurado além do email, manda pro setup
+
+    if (pathname === '/setup') {
+      setVerificado(true)
+      return
+    }
+
+    supabase.from('empresas_detail').select('nome').eq('id', empresaId).single().then(({ data }) => {
       if (!data || !data.nome || data.nome.includes('@')) {
         router.push('/setup')
       }
       setVerificado(true)
     })
-  }, [empresaId, loading, pathname])
+  }, [empresaId, loading, pathname, router])
 
   async function sair() {
     await supabase.auth.signOut()
