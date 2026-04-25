@@ -19,6 +19,19 @@ export default function LoginClient() {
       setLoading(false)
       return
     }
+
+    // Aguarda a sessão ser persistida antes de redirecionar
+    await new Promise<void>((resolve) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          subscription.unsubscribe()
+          resolve()
+        }
+      })
+      // Fallback: redireciona em até 2s mesmo sem evento
+      setTimeout(resolve, 2000)
+    })
+
     router.push('/dashboard')
   }
 
