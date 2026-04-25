@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -23,14 +23,10 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Renova a sessão — IMPORTANTE: não remova esta linha
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-
-  // Rotas públicas — não precisa de sessão
-  const publicPaths = ['/auth/login', '/auth/cadastro', '/']
-  const isPublic = publicPaths.some(p => pathname === p || pathname.startsWith('/auth/'))
+  const isPublic = pathname === '/' || pathname.startsWith('/auth/')
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
