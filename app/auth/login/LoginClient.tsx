@@ -1,10 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginClient() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,10 +20,8 @@ export default function LoginClient() {
       return
     }
 
-    // Aguarda 800ms para garantir que o cookie de sessão foi persistido
-    await new Promise(res => setTimeout(res, 800))
-    router.refresh()
-    router.push('/dashboard')
+    // Força reload completo — garante que cookie é lido antes de montar o dashboard
+    window.location.href = '/dashboard'
   }
 
   return (

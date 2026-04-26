@@ -4,31 +4,16 @@ import { supabase } from '@/lib/supabase'
 
 export function useEmpresa() {
   const [empresaId, setEmpresaId] = useState<string | null>(null)
-  const [perfil, setPerfil] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [perfil,    setPerfil]    = useState<string | null>(null)
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
+    let mounted = true
+
     async function carregar() {
-      // Tenta pegar sessão atual
-      let { data: { session } } = await supabase.auth.getSession()
-
-      // Se não tem sessão, aguarda até 3s pelo evento de login
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(resolve, 3000)
-          const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-            if (s) {
-              session = s
-              clearTimeout(timeout)
-              subscription.unsubscribe()
-              resolve()
-            }
-          })
-        })
-      }
-
-      if (!session?.user) {
-        setLoading(false)
+        if (mounted) setLoading(false)
         return
       }
 
@@ -38,15 +23,23 @@ export function useEmpresa() {
         .eq('user_id', session.user.id)
         .maybeSingle()
 
-      if (data) {
+      if (mounted && data) {
         setEmpresaId(data.empresa_id)
         setPerfil(data.perfil)
       }
 
-      setLoading(false)
+      if (mounted) setLoading(false)
     }
 
     carregar()
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+      if (session) carregar()
+      else { setEmpresaId(null); setPerfil(null); setLoading(false) }
+    })
+
+    return () => { mounted = false; listener.subscription.unsubscribe() }
   }, [])
 
   return { empresaId, perfil, loading }

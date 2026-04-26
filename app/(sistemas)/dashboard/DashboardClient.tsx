@@ -2,24 +2,55 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useEmpresa } from '@/hooks/useEmpresa'
 
 export default function DashboardClient() {
-  const { empresaId, loading } = useEmpresa()
   const router = useRouter()
   const [empresa, setEmpresa] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (loading) return
-    if (!empresaId) { router.push('/auth/login'); return }
-    supabase.from('empresas_detail').select('*').eq('id', empresaId).single().then(({ data }) => {
-      setEmpresa(data)
-    })
-  }, [empresaId, loading])
+ useEffect(() => {
+  async function init() {
+    const { data: { session } } = await supabase.auth.getSession()
+    console.log('SESSION:', session)
+    
+    if (!session?.user) {
+      console.log('SEM SESSÃO — redirecionando')
+      router.push('/auth/login')
+      return
+    }
+
+    const { data: usuario, error } = await supabase
+      .from('usuarios_detail')
+      .select('empresa_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+    
+    console.log('USUARIO:', usuario, 'ERRO:', error)
+
+    if (!usuario?.empresa_id) {
+      console.log('SEM EMPRESA — redirecionando')
+      router.push('/auth/login')
+      return
+    }
+
+    const { data: emp } = await supabase
+      .from('empresas_detail')
+      .select('*')
+      .eq('id', usuario.empresa_id)
+      .single()
+
+    setEmpresa(emp)
+    setLoading(false)
+  }
+  init()
+}, [])
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-      <p style={{ color: '#2B6CB0', fontWeight: 700, letterSpacing: 2 }}>CARREGANDO...</p>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', flexDirection: 'column', gap: 16 }}>
+      <div style={{ background: '#D4A843', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#0A0F1E', fontSize: 22, fontWeight: 900 }}>Z</span>
+      </div>
+      <p style={{ color: '#2B6CB0', fontWeight: 700, letterSpacing: 2, fontSize: 13 }}>CARREGANDO...</p>
     </div>
   )
 
