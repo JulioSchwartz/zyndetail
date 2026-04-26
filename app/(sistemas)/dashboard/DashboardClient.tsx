@@ -8,42 +8,38 @@ export default function DashboardClient() {
   const [empresa, setEmpresa] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
- useEffect(() => {
-  async function init() {
-    const { data: { session } } = await supabase.auth.getSession()
-    console.log('SESSION:', session)
-    
-    if (!session?.user) {
-      console.log('SEM SESSÃO — redirecionando')
-      router.push('/auth/login')
-      return
+  useEffect(() => {
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session?.user) {
+        router.push('/auth/login')
+        return
+      }
+
+      const { data: usuario } = await supabase
+        .from('usuarios_detail')
+        .select('empresa_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+
+      if (!usuario?.empresa_id) {
+        router.push('/auth/login')
+        return
+      }
+
+      const { data: emp } = await supabase
+        .from('empresas_detail')
+        .select('*')
+        .eq('id', usuario.empresa_id)
+        .single()
+
+      setEmpresa(emp)
+      setLoading(false)
     }
 
-    const { data: usuario, error } = await supabase
-      .from('usuarios_detail')
-      .select('empresa_id')
-      .eq('user_id', session.user.id)
-      .maybeSingle()
-    
-    console.log('USUARIO:', usuario, 'ERRO:', error)
-
-    if (!usuario?.empresa_id) {
-      console.log('SEM EMPRESA — redirecionando')
-      router.push('/auth/login')
-      return
-    }
-
-    const { data: emp } = await supabase
-      .from('empresas_detail')
-      .select('*')
-      .eq('id', usuario.empresa_id)
-      .single()
-
-    setEmpresa(emp)
-    setLoading(false)
-  }
-  init()
-}, [])
+    init()
+  }, [])
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', flexDirection: 'column', gap: 16 }}>
