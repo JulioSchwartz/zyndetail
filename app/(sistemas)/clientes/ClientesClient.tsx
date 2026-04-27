@@ -26,7 +26,7 @@ type Veiculo = {
   observacoes: string
 }
 
-type Aba = 'clientes' | 'novo_cliente' | 'detalhe'
+type Aba = 'clientes' | 'novo_cliente' | 'detalhe' | 'veiculo'
 
 function mascaraTelefone(v: string) {
   v = v.replace(/\D/g, '').slice(0, 11)
@@ -37,22 +37,13 @@ function mascaraTelefone(v: string) {
 function mascaraCpfCnpj(v: string) {
   v = v.replace(/\D/g, '').slice(0, 14)
   if (v.length <= 11) {
-    return v
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+    return v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2')
   }
-  return v
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1/$2')
-    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+  return v.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2')
 }
 
 function labelDocumento(v: string) {
-  const nums = v.replace(/\D/g, '')
-  if (nums.length <= 11) return 'CPF'
-  return 'CNPJ'
+  return (v || '').replace(/\D/g, '').length <= 11 ? 'CPF' : 'CNPJ'
 }
 
 export default function ClientesClient() {
@@ -62,11 +53,14 @@ export default function ClientesClient() {
   const [aba, setAba] = useState<Aba>('clientes')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null)
+  const [veiculoSelecionado, setVeiculoSelecionado] = useState<Veiculo | null>(null)
   const [busca, setBusca] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [mostrarNovoVeiculo, setMostrarNovoVeiculo] = useState(false)
+  const [editandoVeiculo, setEditandoVeiculo] = useState(false)
 
+  // Form cliente
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [cpf, setCpf] = useState('')
@@ -74,6 +68,7 @@ export default function ClientesClient() {
   const [dataNascimento, setDataNascimento] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
+  // Form veículo
   const [placa, setPlaca] = useState('')
   const [modelo, setModelo] = useState('')
   const [marca, setMarca] = useState('')
@@ -109,13 +104,9 @@ export default function ClientesClient() {
     if (!telefone.trim()) { setErro('Telefone é obrigatório.'); return }
     setSalvando(true)
     const { error } = await supabase.from('clientes').insert({
-      empresa_id: empresaId,
-      nome: nome.trim(),
-      telefone: telefone.trim(),
-      cpf: cpf.trim() || null,
-      email: email.trim() || null,
-      data_nascimento: dataNascimento || null,
-      observacoes: observacoes.trim() || null,
+      empresa_id: empresaId, nome: nome.trim(), telefone: telefone.trim(),
+      cpf: cpf.trim() || null, email: email.trim() || null,
+      data_nascimento: dataNascimento || null, observacoes: observacoes.trim() || null,
     })
     if (error) { setErro('Erro ao salvar cliente.'); setSalvando(false); return }
     await carregarClientes(empresaId!)
@@ -124,20 +115,16 @@ export default function ClientesClient() {
     setSalvando(false)
   }
 
-  async function salvarVeiculo() {
+  async function salvarNovoVeiculo() {
     setErro('')
     if (!placa.trim()) { setErro('Placa é obrigatória.'); return }
     if (!modelo.trim()) { setErro('Modelo é obrigatório.'); return }
     setSalvando(true)
     const { error } = await supabase.from('veiculos').insert({
-      empresa_id: empresaId,
-      cliente_id: clienteSelecionado!.id,
-      placa: placa.trim().toUpperCase(),
-      modelo: modelo.trim(),
-      marca: marca.trim() || null,
-      cor: cor.trim() || null,
-      ano: ano.trim() || null,
-      observacoes: obsVeiculo.trim() || null,
+      empresa_id: empresaId, cliente_id: clienteSelecionado!.id,
+      placa: placa.trim().toUpperCase(), modelo: modelo.trim(),
+      marca: marca.trim() || null, cor: cor.trim() || null,
+      ano: ano.trim() || null, observacoes: obsVeiculo.trim() || null,
     })
     if (error) { setErro('Erro ao salvar veículo.'); setSalvando(false); return }
     limparFormVeiculo()
@@ -146,12 +133,45 @@ export default function ClientesClient() {
     await abrirDetalhe(clienteSelecionado!.id)
   }
 
+  async function salvarEdicaoVeiculo() {
+    setErro('')
+    if (!placa.trim()) { setErro('Placa é obrigatória.'); return }
+    if (!modelo.trim()) { setErro('Modelo é obrigatório.'); return }
+    setSalvando(true)
+    const { error } = await supabase.from('veiculos').update({
+      placa: placa.trim().toUpperCase(), modelo: modelo.trim(),
+      marca: marca.trim() || null, cor: cor.trim() || null,
+      ano: ano.trim() || null, observacoes: obsVeiculo.trim() || null,
+    }).eq('id', veiculoSelecionado!.id)
+    if (error) { setErro('Erro ao salvar.'); setSalvando(false); return }
+    setSalvando(false)
+    setEditandoVeiculo(false)
+    await abrirVeiculo(veiculoSelecionado!.id)
+    await carregarClientes(empresaId!)
+  }
+
   async function abrirDetalhe(id: string) {
-    const { data } = await supabase
-      .from('clientes').select('*, veiculos(*)')
-      .eq('id', id).single()
+    const { data } = await supabase.from('clientes').select('*, veiculos(*)').eq('id', id).single()
     setClienteSelecionado(data)
+    setMostrarNovoVeiculo(false)
     setAba('detalhe')
+  }
+
+  async function abrirVeiculo(id: string) {
+    const { data } = await supabase.from('veiculos').select('*').eq('id', id).single()
+    setVeiculoSelecionado(data)
+    setEditandoVeiculo(false)
+    setAba('veiculo')
+  }
+
+  function iniciarEdicaoVeiculo(v: Veiculo) {
+    setPlaca(v.placa)
+    setModelo(v.modelo)
+    setMarca(v.marca || '')
+    setCor(v.cor || '')
+    setAno(v.ano || '')
+    setObsVeiculo(v.observacoes || '')
+    setEditandoVeiculo(true)
   }
 
   async function excluirCliente(id: string) {
@@ -202,11 +222,12 @@ export default function ClientesClient() {
     display: 'block', marginBottom: 6, letterSpacing: 1,
   }
 
+  // ── LISTA ──
   if (aba === 'clientes') return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0, letterSpacing: 0.5 }}>👤 Clientes</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>👤 Clientes</h1>
           <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', margin: '8px 0' }} />
           <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>{clientes.length} clientes cadastrados</p>
         </div>
@@ -214,13 +235,11 @@ export default function ClientesClient() {
           + NOVO CLIENTE
         </button>
       </div>
-
       <div style={{ marginBottom: 16 }}>
         <input type="text" placeholder="Buscar por nome, telefone ou placa..."
           value={busca} onChange={e => setBusca(e.target.value)}
           style={{ ...inp, background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', padding: '12px 16px' }} />
       </div>
-
       {clientesFiltrados.length === 0 ? (
         <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
           <p style={{ fontSize: 32, marginBottom: 12 }}>👤</p>
@@ -231,7 +250,7 @@ export default function ClientesClient() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {clientesFiltrados.map(c => (
             <div key={c.id} onClick={() => abrirDetalhe(c.id)}
-              style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14, transition: 'border-color 0.2s' }}>
+              style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span style={{ color: '#D4A843', fontSize: 18, fontWeight: 900 }}>{c.nome.charAt(0).toUpperCase()}</span>
               </div>
@@ -254,6 +273,7 @@ export default function ClientesClient() {
     </div>
   )
 
+  // ── NOVO CLIENTE ──
   if (aba === 'novo_cliente') return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -263,10 +283,8 @@ export default function ClientesClient() {
           <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
         </div>
       </div>
-
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 24, maxWidth: 680 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DO CLIENTE</p>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={lbl}>Nome completo <span style={{ color: '#D4A843' }}>*</span></label>
@@ -274,15 +292,11 @@ export default function ClientesClient() {
           </div>
           <div>
             <label style={lbl}>Telefone / WhatsApp <span style={{ color: '#D4A843' }}>*</span></label>
-            <input style={inp} value={telefone}
-              onChange={e => setTelefone(mascaraTelefone(e.target.value))}
-              placeholder="(49) 9 9999-9999" maxLength={16} />
+            <input style={inp} value={telefone} onChange={e => setTelefone(mascaraTelefone(e.target.value))} placeholder="(49) 9 9999-9999" maxLength={16} />
           </div>
           <div>
             <label style={lbl}>{labelDocumento(cpf)} <span style={{ color: '#4A5568', fontSize: 10 }}>(CPF ou CNPJ)</span></label>
-            <input style={inp} value={cpf}
-              onChange={e => setCpf(mascaraCpfCnpj(e.target.value))}
-              placeholder="000.000.000-00 ou 00.000.000/0000-00" maxLength={18} />
+            <input style={inp} value={cpf} onChange={e => setCpf(mascaraCpfCnpj(e.target.value))} placeholder="000.000.000-00" maxLength={18} />
           </div>
           <div>
             <label style={lbl}>E-mail</label>
@@ -297,16 +311,15 @@ export default function ClientesClient() {
             <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' as const }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Cliente VIP, prefere atendimento às terças..." />
           </div>
         </div>
-
         {erro && <div style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 8, padding: '10px 14px', color: '#FC8181', fontSize: 13, marginBottom: 14 }}>{erro}</div>}
-
-        <button onClick={salvarCliente} disabled={salvando} style={{ width: '100%', background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 14, borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: salvando ? 'not-allowed' : 'pointer', letterSpacing: 1 }}>
+        <button onClick={salvarCliente} disabled={salvando} style={{ width: '100%', background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 14, borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: 'pointer', letterSpacing: 1 }}>
           {salvando ? 'SALVANDO...' : 'CADASTRAR CLIENTE'}
         </button>
       </div>
     </div>
   )
 
+  // ── DETALHE CLIENTE ──
   if (aba === 'detalhe' && clienteSelecionado) return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -315,9 +328,7 @@ export default function ClientesClient() {
           <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>{clienteSelecionado.nome}</h1>
           <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
         </div>
-        <button onClick={() => excluirCliente(clienteSelecionado.id)} style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-          EXCLUIR
-        </button>
+        <button onClick={() => excluirCliente(clienteSelecionado.id)} style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>EXCLUIR</button>
       </div>
 
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 12 }}>
@@ -354,33 +365,15 @@ export default function ClientesClient() {
         {mostrarNovoVeiculo && (
           <div style={{ background: '#080C18', border: '1px solid rgba(212,168,67,0.15)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 12 }}>
-              <div>
-                <label style={lbl}>Placa <span style={{ color: '#D4A843' }}>*</span></label>
-                <input style={inp} value={placa} onChange={e => setPlaca(e.target.value.toUpperCase())} placeholder="ABC-1234 ou ABC1D23" maxLength={8} />
-              </div>
-              <div>
-                <label style={lbl}>Modelo <span style={{ color: '#D4A843' }}>*</span></label>
-                <input style={inp} value={modelo} onChange={e => setModelo(e.target.value)} placeholder="Corolla" />
-              </div>
-              <div>
-                <label style={lbl}>Marca</label>
-                <input style={inp} value={marca} onChange={e => setMarca(e.target.value)} placeholder="Toyota" />
-              </div>
-              <div>
-                <label style={lbl}>Cor</label>
-                <input style={inp} value={cor} onChange={e => setCor(e.target.value)} placeholder="Prata" />
-              </div>
-              <div>
-                <label style={lbl}>Ano</label>
-                <input style={inp} value={ano} onChange={e => setAno(e.target.value)} placeholder="2023" maxLength={4} />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={lbl}>Observações</label>
-                <input style={inp} value={obsVeiculo} onChange={e => setObsVeiculo(e.target.value)} placeholder="Arranhão no para-choque dianteiro..." />
-              </div>
+              <div><label style={lbl}>Placa <span style={{ color: '#D4A843' }}>*</span></label><input style={inp} value={placa} onChange={e => setPlaca(e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} /></div>
+              <div><label style={lbl}>Modelo <span style={{ color: '#D4A843' }}>*</span></label><input style={inp} value={modelo} onChange={e => setModelo(e.target.value)} placeholder="Corolla" /></div>
+              <div><label style={lbl}>Marca</label><input style={inp} value={marca} onChange={e => setMarca(e.target.value)} placeholder="Toyota" /></div>
+              <div><label style={lbl}>Cor</label><input style={inp} value={cor} onChange={e => setCor(e.target.value)} placeholder="Prata" /></div>
+              <div><label style={lbl}>Ano</label><input style={inp} value={ano} onChange={e => setAno(e.target.value)} placeholder="2023" maxLength={4} /></div>
+              <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Observações</label><input style={inp} value={obsVeiculo} onChange={e => setObsVeiculo(e.target.value)} placeholder="Arranhão no para-choque..." /></div>
             </div>
             {erro && <div style={{ color: '#FC8181', fontSize: 13, marginBottom: 10 }}>{erro}</div>}
-            <button onClick={salvarVeiculo} disabled={salvando} style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
+            <button onClick={salvarNovoVeiculo} disabled={salvando} style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
               {salvando ? 'SALVANDO...' : 'SALVAR VEÍCULO'}
             </button>
           </div>
@@ -394,7 +387,8 @@ export default function ClientesClient() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(clienteSelecionado.veiculos || []).map(v => (
-              <div key={v.id} style={{ background: '#080C18', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={v.id} onClick={() => { setVeiculoSelecionado(v); abrirVeiculo(v.id) }}
+                style={{ background: '#080C18', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
                 <div style={{ background: 'rgba(144,205,244,0.1)', border: '1px solid rgba(144,205,244,0.2)', borderRadius: 8, padding: '4px 10px' }}>
                   <p style={{ color: '#90CDF4', fontSize: 13, fontWeight: 900, letterSpacing: 2, margin: 0 }}>{v.placa}</p>
                 </div>
@@ -402,9 +396,73 @@ export default function ClientesClient() {
                   <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: 0 }}>{v.marca ? `${v.marca} ` : ''}{v.modelo}</p>
                   <p style={{ color: '#4A5568', fontSize: 11, margin: '3px 0 0' }}>{v.cor ? `${v.cor} · ` : ''}{v.ano || ''}</p>
                 </div>
-                <button onClick={() => excluirVeiculo(v.id)} style={{ background: 'transparent', border: 'none', color: '#4A5568', cursor: 'pointer', fontSize: 16, padding: 4 }}>✕</button>
+                <span style={{ color: '#4A5568', fontSize: 18 }}>›</span>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // ── DETALHE VEÍCULO ──
+  if (aba === 'veiculo' && veiculoSelecionado) return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <button onClick={() => { setEditandoVeiculo(false); abrirDetalhe(veiculoSelecionado.cliente_id) }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#4A5568', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>← Voltar</button>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>{veiculoSelecionado.placa}</h1>
+          <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #90CDF4, transparent)', marginTop: 6 }} />
+        </div>
+        {!editandoVeiculo && (
+          <button onClick={() => iniciarEdicaoVeiculo(veiculoSelecionado)} style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>EDITAR</button>
+        )}
+        <button onClick={() => excluirVeiculo(veiculoSelecionado.id)} style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>EXCLUIR</button>
+      </div>
+
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#90CDF4', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(144,205,244,0.1)', paddingBottom: 10 }}>DADOS DO VEÍCULO</p>
+
+        {editandoVeiculo ? (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
+              <div><label style={lbl}>Placa <span style={{ color: '#D4A843' }}>*</span></label><input style={inp} value={placa} onChange={e => setPlaca(e.target.value.toUpperCase())} maxLength={8} /></div>
+              <div><label style={lbl}>Modelo <span style={{ color: '#D4A843' }}>*</span></label><input style={inp} value={modelo} onChange={e => setModelo(e.target.value)} /></div>
+              <div><label style={lbl}>Marca</label><input style={inp} value={marca} onChange={e => setMarca(e.target.value)} /></div>
+              <div><label style={lbl}>Cor</label><input style={inp} value={cor} onChange={e => setCor(e.target.value)} /></div>
+              <div><label style={lbl}>Ano</label><input style={inp} value={ano} onChange={e => setAno(e.target.value)} maxLength={4} /></div>
+              <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Observações</label><textarea style={{ ...inp, minHeight: 80, resize: 'vertical' as const }} value={obsVeiculo} onChange={e => setObsVeiculo(e.target.value)} /></div>
+            </div>
+            {erro && <div style={{ color: '#FC8181', fontSize: 13, marginBottom: 10 }}>{erro}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={salvarEdicaoVeiculo} disabled={salvando} style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
+                {salvando ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}
+              </button>
+              <button onClick={() => setEditandoVeiculo(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#4A5568', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                CANCELAR
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+            {[
+              { label: 'Placa', valor: veiculoSelecionado.placa },
+              { label: 'Modelo', valor: veiculoSelecionado.modelo },
+              { label: 'Marca', valor: veiculoSelecionado.marca || '—' },
+              { label: 'Cor', valor: veiculoSelecionado.cor || '—' },
+              { label: 'Ano', valor: veiculoSelecionado.ano || '—' },
+            ].map((item, i) => (
+              <div key={i}>
+                <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>{item.label.toUpperCase()}</p>
+                <p style={{ color: '#fff', fontSize: 14 }}>{item.valor}</p>
+              </div>
+            ))}
+            {veiculoSelecionado.observacoes && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>OBSERVAÇÕES</p>
+                <p style={{ color: '#CBD5E0', fontSize: 13, lineHeight: 1.6 }}>{veiculoSelecionado.observacoes}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
