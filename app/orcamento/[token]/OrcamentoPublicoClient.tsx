@@ -21,6 +21,7 @@ export default function OrcamentoPublicoClient() {
   const [motivoRecusa, setMotivoRecusa] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
+  const [statusFinal, setStatusFinal] = useState<'aprovado' | 'recusado' | null>(null)
 
   useEffect(() => {
     async function carregar() {
@@ -50,7 +51,6 @@ export default function OrcamentoPublicoClient() {
     if (assinaturaCpf.replace(/\D/g, '').length < 11) { setErro('Informe um CPF válido.'); return }
     setSalvando(true)
 
-    // Pega IP público
     let ip = 'N/A'
     try {
       const res = await fetch('https://api.ipify.org?format=json')
@@ -69,7 +69,6 @@ export default function OrcamentoPublicoClient() {
 
     if (error) { setErro('Erro ao registrar assinatura.'); setSalvando(false); return }
 
-    // Envia email para a estética
     await fetch('/api/notificar-orcamento', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -87,6 +86,7 @@ export default function OrcamentoPublicoClient() {
     }).catch(() => {})
 
     setSalvando(false)
+    setStatusFinal('aprovado')
     setEtapa('concluido')
   }
 
@@ -118,6 +118,7 @@ export default function OrcamentoPublicoClient() {
     }).catch(() => {})
 
     setSalvando(false)
+    setStatusFinal('recusado')
     setEtapa('concluido')
   }
 
@@ -140,23 +141,23 @@ export default function OrcamentoPublicoClient() {
 
   const inp: React.CSSProperties = { width: '100%', padding: '12px 14px', background: '#0A0F1E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#fff', fontSize: 15, boxSizing: 'border-box' as const, outline: 'none' }
 
-  // Concluído
+  // ── CONCLUÍDO ──
   if (etapa === 'concluido') return (
     <div style={{ minHeight: '100vh', background: '#080C18', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 20, padding: 40, maxWidth: 480, width: '100%', textAlign: 'center' }}>
         <div style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', borderRadius: 16, width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           <span style={{ color: '#080C18', fontSize: 30, fontWeight: 900 }}>Z</span>
         </div>
-        <p style={{ fontSize: 40, marginBottom: 16 }}>{orcamento.status === 'aprovado' ? '✅' : '❌'}</p>
+        <p style={{ fontSize: 40, marginBottom: 16 }}>{statusFinal === 'aprovado' ? '✅' : '❌'}</p>
         <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 12px' }}>
-          {orcamento.status === 'aprovado' ? 'Orçamento Aprovado!' : 'Orçamento Recusado'}
+          {statusFinal === 'aprovado' ? 'Orçamento Aprovado!' : 'Orçamento Recusado'}
         </h2>
         <p style={{ color: '#4A5568', fontSize: 14, lineHeight: 1.6 }}>
-          {orcamento.status === 'aprovado'
+          {statusFinal === 'aprovado'
             ? `Obrigado, ${assinaturaNome.split(' ')[0]}! Sua aprovação foi registrada. Em breve nossa equipe entrará em contato para agendar o serviço.`
             : 'Sua recusa foi registrada. Obrigado pelo retorno.'}
         </p>
-        {empresa?.whatsapp && orcamento.status === 'aprovado' && (
+        {empresa?.whatsapp && statusFinal === 'aprovado' && (
           <a href={`https://wa.me/55${empresa.whatsapp.replace(/\D/g, '')}`} target="_blank"
             style={{ display: 'inline-block', marginTop: 20, background: 'rgba(72,187,120,0.1)', border: '1px solid rgba(72,187,120,0.3)', color: '#48BB78', padding: '12px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
             📱 Falar com a estética
@@ -175,9 +176,7 @@ export default function OrcamentoPublicoClient() {
           <div style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#080C18', fontWeight: 900, fontSize: 15 }}>Z</span>
           </div>
-          <div>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: 2 }}>{empresa?.nome || 'ZYNDETAIL'}</span>
-          </div>
+          <span style={{ color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: 2 }}>{empresa?.nome || 'ZYNDETAIL'}</span>
         </div>
         <span style={{ color: '#4A5568', fontSize: 11, letterSpacing: 2 }}>ORÇAMENTO #{orcamento.token}</span>
       </div>
