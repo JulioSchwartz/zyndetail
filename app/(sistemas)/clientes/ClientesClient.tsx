@@ -28,6 +28,33 @@ type Veiculo = {
 
 type Aba = 'clientes' | 'novo_cliente' | 'detalhe'
 
+function mascaraTelefone(v: string) {
+  v = v.replace(/\D/g, '').slice(0, 11)
+  if (v.length <= 10) return v.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').replace(/-$/, '')
+  return v.replace(/(\d{2})(\d{1})(\d{4})(\d{0,4})/, '($1) $2 $3-$4').replace(/-$/, '')
+}
+
+function mascaraCpfCnpj(v: string) {
+  v = v.replace(/\D/g, '').slice(0, 14)
+  if (v.length <= 11) {
+    return v
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+  }
+  return v
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+}
+
+function labelDocumento(v: string) {
+  const nums = v.replace(/\D/g, '')
+  if (nums.length <= 11) return 'CPF'
+  return 'CNPJ'
+}
+
 export default function ClientesClient() {
   const router = useRouter()
   const [empresaId, setEmpresaId] = useState<string | null>(null)
@@ -40,7 +67,6 @@ export default function ClientesClient() {
   const [erro, setErro] = useState('')
   const [mostrarNovoVeiculo, setMostrarNovoVeiculo] = useState(false)
 
-  // Form cliente
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [cpf, setCpf] = useState('')
@@ -48,7 +74,6 @@ export default function ClientesClient() {
   const [dataNascimento, setDataNascimento] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
-  // Form veículo
   const [placa, setPlaca] = useState('')
   const [modelo, setModelo] = useState('')
   const [marca, setMarca] = useState('')
@@ -115,9 +140,6 @@ export default function ClientesClient() {
       observacoes: obsVeiculo.trim() || null,
     })
     if (error) { setErro('Erro ao salvar veículo.'); setSalvando(false); return }
-    await carregarClientes(empresaId!)
-    const atualizado = clientes.find(c => c.id === clienteSelecionado!.id)
-    if (atualizado) setClienteSelecionado({ ...atualizado })
     limparFormVeiculo()
     setMostrarNovoVeiculo(false)
     setSalvando(false)
@@ -173,15 +195,13 @@ export default function ClientesClient() {
   const inp: React.CSSProperties = {
     width: '100%', padding: '10px 14px', background: '#080C18',
     border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8,
-    color: '#fff', fontSize: 14, boxSizing: 'border-box' as const,
-    outline: 'none',
+    color: '#fff', fontSize: 14, boxSizing: 'border-box' as const, outline: 'none',
   }
   const lbl: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, color: '#4A5568',
     display: 'block', marginBottom: 6, letterSpacing: 1,
   }
 
-  // ── LISTA DE CLIENTES ──
   if (aba === 'clientes') return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
@@ -195,13 +215,10 @@ export default function ClientesClient() {
         </button>
       </div>
 
-      {/* Busca */}
       <div style={{ marginBottom: 16 }}>
-        <input
-          type="text" placeholder="Buscar por nome, telefone ou placa..."
+        <input type="text" placeholder="Buscar por nome, telefone ou placa..."
           value={busca} onChange={e => setBusca(e.target.value)}
-          style={{ ...inp, background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', padding: '12px 16px' }}
-        />
+          style={{ ...inp, background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', padding: '12px 16px' }} />
       </div>
 
       {clientesFiltrados.length === 0 ? (
@@ -237,7 +254,6 @@ export default function ClientesClient() {
     </div>
   )
 
-  // ── NOVO CLIENTE ──
   if (aba === 'novo_cliente') return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -258,11 +274,15 @@ export default function ClientesClient() {
           </div>
           <div>
             <label style={lbl}>Telefone / WhatsApp <span style={{ color: '#D4A843' }}>*</span></label>
-            <input style={inp} value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(42) 99999-9999" />
+            <input style={inp} value={telefone}
+              onChange={e => setTelefone(mascaraTelefone(e.target.value))}
+              placeholder="(49) 9 9999-9999" maxLength={16} />
           </div>
           <div>
-            <label style={lbl}>CPF</label>
-            <input style={inp} value={cpf} onChange={e => setCpf(e.target.value)} placeholder="000.000.000-00" />
+            <label style={lbl}>{labelDocumento(cpf)} <span style={{ color: '#4A5568', fontSize: 10 }}>(CPF ou CNPJ)</span></label>
+            <input style={inp} value={cpf}
+              onChange={e => setCpf(mascaraCpfCnpj(e.target.value))}
+              placeholder="000.000.000-00 ou 00.000.000/0000-00" maxLength={18} />
           </div>
           <div>
             <label style={lbl}>E-mail</label>
@@ -287,7 +307,6 @@ export default function ClientesClient() {
     </div>
   )
 
-  // ── DETALHE DO CLIENTE ──
   if (aba === 'detalhe' && clienteSelecionado) return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -301,14 +320,13 @@ export default function ClientesClient() {
         </button>
       </div>
 
-      {/* Dados do cliente */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 12 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DO CLIENTE</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           {[
             { label: 'Telefone', valor: clienteSelecionado.telefone },
             { label: 'E-mail', valor: clienteSelecionado.email || '—' },
-            { label: 'CPF', valor: clienteSelecionado.cpf || '—' },
+            { label: labelDocumento(clienteSelecionado.cpf || ''), valor: clienteSelecionado.cpf || '—' },
             { label: 'Nascimento', valor: clienteSelecionado.data_nascimento ? new Date(clienteSelecionado.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—' },
           ].map((item, i) => (
             <div key={i}>
@@ -325,7 +343,6 @@ export default function ClientesClient() {
         </div>
       </div>
 
-      {/* Veículos */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, margin: 0 }}>VEÍCULOS ({(clienteSelecionado.veiculos || []).length})</p>
@@ -334,13 +351,12 @@ export default function ClientesClient() {
           </button>
         </div>
 
-        {/* Form novo veículo */}
         {mostrarNovoVeiculo && (
           <div style={{ background: '#080C18', border: '1px solid rgba(212,168,67,0.15)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={lbl}>Placa <span style={{ color: '#D4A843' }}>*</span></label>
-                <input style={inp} value={placa} onChange={e => setPlaca(e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} />
+                <input style={inp} value={placa} onChange={e => setPlaca(e.target.value.toUpperCase())} placeholder="ABC-1234 ou ABC1D23" maxLength={8} />
               </div>
               <div>
                 <label style={lbl}>Modelo <span style={{ color: '#D4A843' }}>*</span></label>
@@ -370,7 +386,6 @@ export default function ClientesClient() {
           </div>
         )}
 
-        {/* Lista veículos */}
         {(clienteSelecionado.veiculos || []).length === 0 && !mostrarNovoVeiculo ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <p style={{ fontSize: 28, marginBottom: 8 }}>🚗</p>
