@@ -21,7 +21,6 @@ export default function ConfiguracoesClient() {
   const [erro, setErro] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Dados da empresa
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
@@ -91,14 +90,12 @@ export default function ConfiguracoesClient() {
     setErro('')
     setUploadando(true)
 
-    // Valida tipo e tamanho
     if (!file.type.startsWith('image/')) { setErro('Arquivo deve ser uma imagem.'); setUploadando(false); return }
     if (file.size > 2 * 1024 * 1024) { setErro('Imagem deve ter no máximo 2MB.'); setUploadando(false); return }
 
     const ext = file.name.split('.').pop()
     const path = `${empresaId}/logo.${ext}`
 
-    // Remove logo anterior
     await supabase.storage.from('logos').remove([path])
 
     const { error: uploadError } = await supabase.storage
@@ -107,14 +104,22 @@ export default function ConfiguracoesClient() {
     if (uploadError) { setErro('Erro ao fazer upload da logo.'); setUploadando(false); return }
 
     const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(path)
-    setLogoUrl(publicUrl + '?t=' + Date.now())
+    const urlFinal = publicUrl + '?t=' + Date.now()
+
+    // Salva automaticamente no banco após upload
+    await supabase.from('empresas_detail').update({ logo_url: urlFinal }).eq('id', empresaId)
+
+    setLogoUrl(urlFinal)
     setUploadando(false)
+    setSucesso(true)
+    setTimeout(() => setSucesso(false), 3000)
   }
 
   async function removerLogo() {
     if (!confirm('Remover a logo?')) return
-    const ext = logoUrl.split('.').pop()?.split('?')[0]
+    const ext = logoUrl.split('/').pop()?.split('?')[0].split('.').pop()
     await supabase.storage.from('logos').remove([`${empresaId}/logo.${ext}`])
+    await supabase.from('empresas_detail').update({ logo_url: null }).eq('id', empresaId)
     setLogoUrl('')
   }
 
@@ -139,7 +144,6 @@ export default function ConfiguracoesClient() {
 
   return (
     <div style={{ maxWidth: 720 }}>
-      {/* Header */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>⚙️ Configurações</h1>
         <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', margin: '8px 0' }} />
@@ -160,9 +164,7 @@ export default function ConfiguracoesClient() {
       {/* Logo */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>LOGO DA ESTÉTICA</p>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          {/* Preview */}
           <div style={{ width: 100, height: 100, borderRadius: 14, background: '#080C18', border: '2px dashed rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
             {logoUrl ? (
               <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} />
@@ -173,11 +175,11 @@ export default function ConfiguracoesClient() {
               </div>
             )}
           </div>
-
           <div style={{ flex: 1 }}>
             <p style={{ color: '#CBD5E0', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>
               A logo aparece nos orçamentos enviados aos clientes. Formatos aceitos: PNG, JPG, SVG. Tamanho máximo: 2MB.
             </p>
+            <p style={{ color: '#4A5568', fontSize: 11, margin: '0 0 12px' }}>✅ A logo é salva automaticamente após o upload.</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
                 onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
@@ -199,7 +201,6 @@ export default function ConfiguracoesClient() {
       {/* Dados da empresa */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DA ESTÉTICA</p>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={lbl}>Nome da estética <span style={{ color: '#D4A843' }}>*</span></label>
@@ -224,7 +225,6 @@ export default function ConfiguracoesClient() {
       {/* Localização */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>LOCALIZAÇÃO</p>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={lbl}>Endereço</label>
@@ -243,7 +243,6 @@ export default function ConfiguracoesClient() {
         </div>
       </div>
 
-      {/* Erros e sucesso */}
       {erro && (
         <div style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, color: '#FC8181', fontSize: 14 }}>
           {erro}
