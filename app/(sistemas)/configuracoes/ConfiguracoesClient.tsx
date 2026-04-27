@@ -10,6 +10,13 @@ function mascaraTelefone(v: string) {
 }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+const DIAS_OPTIONS = [
+  { key: 'seg', label: 'SEG' }, { key: 'ter', label: 'TER' }, { key: 'qua', label: 'QUA' },
+  { key: 'qui', label: 'QUI' }, { key: 'sex', label: 'SEX' }, { key: 'sab', label: 'SÁB' }, { key: 'dom', label: 'DOM' },
+]
+const HORAS_OPTIONS = ['06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00',
+  '10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30',
+  '16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00','22:00']
 
 export default function ConfiguracoesClient() {
   const router = useRouter()
@@ -32,20 +39,25 @@ export default function ConfiguracoesClient() {
   const [plano, setPlano] = useState('')
   const [status, setStatus] = useState('')
 
+  // Funcionamento
+  const [horarioAbertura, setHorarioAbertura] = useState('08:00')
+  const [horarioFechamento, setHorarioFechamento] = useState('18:00')
+  const [diasFuncionamento, setDiasFuncionamento] = useState<string[]>(['seg','ter','qua','qui','sex'])
+
+  // Vagas
+  const [vagasLavagem, setVagasLavagem] = useState('2')
+  const [vagasPolimento, setVagasPolimento] = useState('1')
+  const [vagasOutros, setVagasOutros] = useState('2')
+
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) { router.push('/auth/login'); return }
-      const { data: usuario } = await supabase
-        .from('usuarios_detail').select('empresa_id')
-        .eq('user_id', session.user.id).maybeSingle()
+      const { data: usuario } = await supabase.from('usuarios_detail').select('empresa_id').eq('user_id', session.user.id).maybeSingle()
       if (!usuario?.empresa_id) { router.push('/auth/login'); return }
       setEmpresaId(usuario.empresa_id)
 
-      const { data: emp } = await supabase
-        .from('empresas_detail').select('*')
-        .eq('id', usuario.empresa_id).single()
-
+      const { data: emp } = await supabase.from('empresas_detail').select('*').eq('id', usuario.empresa_id).single()
       if (emp) {
         setNome(emp.nome || '')
         setTelefone(emp.telefone || '')
@@ -57,11 +69,24 @@ export default function ConfiguracoesClient() {
         setLogoUrl(emp.logo_url || '')
         setPlano(emp.plano || '')
         setStatus(emp.status || '')
+        setHorarioAbertura(emp.horario_abertura?.slice(0,5) || '08:00')
+        setHorarioFechamento(emp.horario_fechamento?.slice(0,5) || '18:00')
+        setDiasFuncionamento(emp.dias_funcionamento || ['seg','ter','qua','qui','sex'])
+        const vagas = emp.vagas || {}
+        setVagasLavagem(String(vagas.lavagem || 2))
+        setVagasPolimento(String(vagas.polimento || 1))
+        setVagasOutros(String(vagas.outros || 2))
       }
       setLoading(false)
     }
     init()
   }, [])
+
+  function toggleDia(dia: string) {
+    setDiasFuncionamento(prev =>
+      prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]
+    )
+  }
 
   async function salvar() {
     setErro('')
@@ -78,6 +103,14 @@ export default function ConfiguracoesClient() {
       cidade: cidade.trim() || null,
       estado,
       logo_url: logoUrl || null,
+      horario_abertura: horarioAbertura,
+      horario_fechamento: horarioFechamento,
+      dias_funcionamento: diasFuncionamento,
+      vagas: {
+        lavagem: parseInt(vagasLavagem) || 2,
+        polimento: parseInt(vagasPolimento) || 1,
+        outros: parseInt(vagasOutros) || 2,
+      },
     }).eq('id', empresaId)
 
     if (error) { setErro('Erro ao salvar configurações.'); setSalvando(false); return }
@@ -89,26 +122,18 @@ export default function ConfiguracoesClient() {
   async function uploadLogo(file: File) {
     setErro('')
     setUploadando(true)
-
     if (!file.type.startsWith('image/')) { setErro('Arquivo deve ser uma imagem.'); setUploadando(false); return }
     if (file.size > 2 * 1024 * 1024) { setErro('Imagem deve ter no máximo 2MB.'); setUploadando(false); return }
 
     const ext = file.name.split('.').pop()
     const path = `${empresaId}/logo.${ext}`
-
     await supabase.storage.from('logos').remove([path])
-
-    const { error: uploadError } = await supabase.storage
-      .from('logos').upload(path, file, { upsert: true })
-
+    const { error: uploadError } = await supabase.storage.from('logos').upload(path, file, { upsert: true })
     if (uploadError) { setErro('Erro ao fazer upload da logo.'); setUploadando(false); return }
 
     const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(path)
     const urlFinal = publicUrl + '?t=' + Date.now()
-
-    // Salva automaticamente no banco após upload
     await supabase.from('empresas_detail').update({ logo_url: urlFinal }).eq('id', empresaId)
-
     setLogoUrl(urlFinal)
     setUploadando(false)
     setSucesso(true)
@@ -150,7 +175,7 @@ export default function ConfiguracoesClient() {
         <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>Dados da sua estética automotiva</p>
       </div>
 
-      {/* Plano atual */}
+      {/* Plano */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, margin: '0 0 4px' }}>PLANO ATUAL</p>
@@ -165,40 +190,29 @@ export default function ConfiguracoesClient() {
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>LOGO DA ESTÉTICA</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ width: 100, height: 100, borderRadius: 14, background: '#080C18', border: '2px dashed rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-            {logoUrl ? (
-              <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} />
-            ) : (
-              <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 28, margin: 0 }}>🏪</p>
+          <div style={{ width: 90, height: 90, borderRadius: 12, background: '#080C18', border: '2px dashed rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+            {logoUrl ? <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }} /> : (
+              <div style={{ textAlign: 'center' as const }}>
+                <p style={{ fontSize: 24, margin: 0 }}>🏪</p>
                 <p style={{ color: '#4A5568', fontSize: 10, margin: '4px 0 0' }}>SEM LOGO</p>
               </div>
             )}
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ color: '#CBD5E0', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>
-              A logo aparece nos orçamentos enviados aos clientes. Formatos aceitos: PNG, JPG, SVG. Tamanho máximo: 2MB.
-            </p>
-            <p style={{ color: '#4A5568', fontSize: 11, margin: '0 0 12px' }}>✅ A logo é salva automaticamente após o upload.</p>
+            <p style={{ color: '#CBD5E0', fontSize: 13, margin: '0 0 8px', lineHeight: 1.6 }}>PNG, JPG ou SVG. Máx 2MB. Salva automaticamente após upload.</p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
               <button onClick={() => fileRef.current?.click()} disabled={uploadando}
                 style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '8px 16px', borderRadius: 8, fontWeight: 900, fontSize: 12, cursor: 'pointer', letterSpacing: 1 }}>
-                {uploadando ? 'ENVIANDO...' : logoUrl ? '🔄 TROCAR LOGO' : '📤 ENVIAR LOGO'}
+                {uploadando ? 'ENVIANDO...' : logoUrl ? '🔄 TROCAR' : '📤 ENVIAR LOGO'}
               </button>
-              {logoUrl && (
-                <button onClick={removerLogo}
-                  style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-                  REMOVER
-                </button>
-              )}
+              {logoUrl && <button onClick={removerLogo} style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>REMOVER</button>}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Dados da empresa */}
+      {/* Dados */}
       <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DA ESTÉTICA</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -223,7 +237,7 @@ export default function ConfiguracoesClient() {
       </div>
 
       {/* Localização */}
-      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>LOCALIZAÇÃO</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
@@ -243,23 +257,66 @@ export default function ConfiguracoesClient() {
         </div>
       </div>
 
-      {erro && (
-        <div style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, color: '#FC8181', fontSize: 14 }}>
-          {erro}
+      {/* Funcionamento */}
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 16, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>HORÁRIO DE FUNCIONAMENTO</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+          <div>
+            <label style={lbl}>Abertura</label>
+            <select style={inp} value={horarioAbertura} onChange={e => setHorarioAbertura(e.target.value)}>
+              {HORAS_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Fechamento</label>
+            <select style={inp} value={horarioFechamento} onChange={e => setHorarioFechamento(e.target.value)}>
+              {HORAS_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
         </div>
-      )}
-      {sucesso && (
-        <div style={{ background: 'rgba(72,187,120,0.08)', border: '1px solid rgba(72,187,120,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, color: '#48BB78', fontSize: 14, fontWeight: 700 }}>
-          ✅ Configurações salvas com sucesso!
+        <label style={lbl}>Dias de funcionamento</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+          {DIAS_OPTIONS.map(d => {
+            const ativo = diasFuncionamento.includes(d.key)
+            return (
+              <button key={d.key} onClick={() => toggleDia(d.key)}
+                style={{ background: ativo ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${ativo ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: ativo ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: ativo ? 700 : 400 }}>
+                {d.label}
+              </button>
+            )
+          })}
         </div>
-      )}
+      </div>
+
+      {/* Vagas */}
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 6, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>VAGAS SIMULTÂNEAS</p>
+        <p style={{ color: '#4A5568', fontSize: 12, marginBottom: 14 }}>Quantidade máxima de serviços por horário. Impede agendamentos duplicados.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <div>
+            <label style={lbl}>Lavagem</label>
+            <input style={inp} type="number" min="1" max="20" value={vagasLavagem} onChange={e => setVagasLavagem(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Polimento</label>
+            <input style={inp} type="number" min="1" max="20" value={vagasPolimento} onChange={e => setVagasPolimento(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Outros</label>
+            <input style={inp} type="number" min="1" max="20" value={vagasOutros} onChange={e => setVagasOutros(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {erro && <div style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, color: '#FC8181', fontSize: 14 }}>{erro}</div>}
+      {sucesso && <div style={{ background: 'rgba(72,187,120,0.08)', border: '1px solid rgba(72,187,120,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, color: '#48BB78', fontSize: 14, fontWeight: 700 }}>✅ Configurações salvas com sucesso!</div>}
 
       <button onClick={salvar} disabled={salvando}
         style={{ width: '100%', background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 16, borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: salvando ? 'not-allowed' : 'pointer', letterSpacing: 1 }}>
         {salvando ? 'SALVANDO...' : 'SALVAR CONFIGURAÇÕES'}
       </button>
 
-      <p style={{ color: '#2D3748', fontSize: 11, textAlign: 'center', marginTop: 20, letterSpacing: 1 }}>
+      <p style={{ color: '#2D3748', fontSize: 11, textAlign: 'center' as const, marginTop: 20, letterSpacing: 1 }}>
         POWERED BY ZYNDETAIL · ZYNCOMPANY
       </p>
     </div>
