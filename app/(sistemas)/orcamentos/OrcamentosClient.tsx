@@ -14,6 +14,7 @@ type Orcamento = {
   observacoes: string
   assinatura_nome: string
   assinatura_cpf: string
+  assinatura_ip: string
   assinado_em: string
   motivo_recusa: string
   notificacao_lida: boolean
