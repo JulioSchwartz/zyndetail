@@ -56,8 +56,10 @@ function calcularProximoAtendimento(ultimo: string | undefined, periodicidade: s
 }
 
 function diasAteProximo(data: string): number {
-  const hoje = new Date(); hoje.setHours(0,0,0,0)
-  const proximo = new Date(data + 'T12:00:00')
+  const agora = new Date()
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate())
+  const [ano, mes, dia] = data.split('-').map(Number)
+  const proximo = new Date(ano, mes - 1, dia)
   return Math.ceil((proximo.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 }
 

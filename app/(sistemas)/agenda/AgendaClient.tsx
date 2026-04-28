@@ -24,12 +24,12 @@ type Agendamento = {
 type VisualizacaoTipo = 'semana' | 'lista'
 
 const DIAS_SEMANA_KEY = ['dom','seg','ter','qua','qui','sex','sab']
-const SLOT_HEIGHT = 52 // px por slot de 30min
+const SLOT_HEIGHT = 52
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
   agendado:   { label: 'AGENDADO',   cor: '#90CDF4', bg: 'rgba(144,205,244,0.15)' },
-  confirmado: { label: 'CONFIRMADO', cor: '#D4A843', bg: 'rgba(212,168,67,0.15)' },
-  concluido:  { label: 'CONCLUÍDO',  cor: '#48BB78', bg: 'rgba(72,187,120,0.15)' },
+  confirmado: { label: 'CONFIRMADO', cor: '#D4A843', bg: 'rgba(212,168,67,0.15)'  },
+  concluido:  { label: 'CONCLUÍDO',  cor: '#48BB78', bg: 'rgba(72,187,120,0.15)'  },
   cancelado:  { label: 'CANCELADO',  cor: '#FC8181', bg: 'rgba(252,129,129,0.15)' },
   pendente:   { label: 'PENDENTE',   cor: '#CBD5E0', bg: 'rgba(203,213,224,0.15)' },
 }
@@ -59,15 +59,20 @@ function nomeDia(d: Date) {
   return d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase()
 }
 
-// Converte hora "HH:MM" em minutos desde meia-noite
 function horaParaMinutos(hora: string) {
   const [h, m] = hora.slice(0, 5).split(':').map(Number)
   return h * 60 + m
 }
 
-// Converte minutos em posição top relativa ao horário de abertura
 function minutosParaTop(minutos: number, aberturaMin: number) {
   return ((minutos - aberturaMin) / 30) * SLOT_HEIGHT
+}
+
+function formatarDuracao(min: number) {
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
 }
 
 export default function AgendaClient() {
@@ -126,6 +131,17 @@ export default function AgendaClient() {
     ])
     setClientes(cls || [])
     setServicos(servs || [])
+  }
+
+  // Ao selecionar serviço, preenche duração automaticamente
+  function selecionarServico(nomeServico: string) {
+    setServicoNome(nomeServico)
+    if (nomeServico) {
+      const serv = servicos.find(s => s.nome === nomeServico)
+      if (serv?.duracao_minutos) {
+        setDuracao(String(serv.duracao_minutos))
+      }
+    }
   }
 
   async function salvar() {
@@ -193,7 +209,6 @@ export default function AgendaClient() {
   const aberturaMin = horaParaMinutos(horaAbertura)
   const fechamentoMin = horaParaMinutos(horaFechamento)
 
-  // Gera slots de 30min entre abertura e fechamento
   const slots: string[] = []
   for (let m = aberturaMin; m < fechamentoMin; m += 30) {
     const h = String(Math.floor(m / 60)).padStart(2, '0')
@@ -218,7 +233,6 @@ export default function AgendaClient() {
 
   return (
     <div>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>📅 Agenda</h1>
@@ -244,7 +258,7 @@ export default function AgendaClient() {
         </div>
       </div>
 
-      {/* ── VISUALIZAÇÃO SEMANA ── */}
+      {/* ── SEMANA ── */}
       {visualizacao === 'semana' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -258,7 +272,6 @@ export default function AgendaClient() {
           </div>
 
           <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden' }}>
-            {/* Cabeçalho */}
             <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#080C18' }}>
               <div />
               {diasSemana.map((dia, i) => {
@@ -278,10 +291,8 @@ export default function AgendaClient() {
               })}
             </div>
 
-            {/* Grid com posicionamento absoluto */}
             <div style={{ maxHeight: 560, overflowY: 'auto' as const }}>
               <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', position: 'relative' as const }}>
-                {/* Coluna de horas */}
                 <div style={{ position: 'relative' as const, height: alturaGrid }}>
                   {slots.map((slot, i) => (
                     <div key={slot} style={{ position: 'absolute' as const, top: i * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', alignItems: 'flex-start', paddingTop: 4, paddingLeft: 6 }}>
@@ -290,36 +301,29 @@ export default function AgendaClient() {
                   ))}
                 </div>
 
-                {/* Colunas dos dias */}
                 {diasSemana.map((dia, di) => {
                   const dStr = formatarDataLocal(dia)
                   const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
                   const diaAtivo = diasFuncionamento.includes(diaKey)
                   const agsNoDia = agendamentos.filter(a => a.data === dStr)
-
                   return (
                     <div key={di} style={{ position: 'relative' as const, height: alturaGrid, borderLeft: '1px solid rgba(255,255,255,0.04)', background: !diaAtivo ? 'rgba(0,0,0,0.15)' : 'transparent' }}>
-                      {/* Linhas de slot clicáveis */}
                       {slots.map((slot, si) => (
                         <div key={slot} onClick={() => { if (diaAtivo) abrirModal(undefined, dStr, slot) }}
                           style={{ position: 'absolute' as const, top: si * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: diaAtivo ? 'pointer' : 'default' }} />
                       ))}
-
-                      {/* Agendamentos posicionados */}
                       {agsNoDia.map(ag => {
                         const agMin = horaParaMinutos(ag.hora)
                         const top = minutosParaTop(agMin, aberturaMin)
                         const altura = Math.max(((ag.duracao_minutos || 60) / 30) * SLOT_HEIGHT - 4, SLOT_HEIGHT - 4)
                         const st = STATUS_CONFIG[ag.status] || STATUS_CONFIG.agendado
                         const label = ag.titulo || ag.servico || ag.cliente?.nome || 'Agendamento'
-                        const showCliente = altura > 40 && ag.cliente
-
                         return (
                           <div key={ag.id} onClick={e => { e.stopPropagation(); abrirModal(ag) }}
                             style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', zIndex: 1 }}>
                             <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
-                            {showCliente && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
-                            {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {ag.duracao_minutos}min</p>}
+                            {ag.cliente && altura > 40 && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
+                            {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {formatarDuracao(ag.duracao_minutos)}</p>}
                           </div>
                         )
                       })}
@@ -332,7 +336,7 @@ export default function AgendaClient() {
         </div>
       )}
 
-      {/* ── VISUALIZAÇÃO LISTA ── */}
+      {/* ── LISTA ── */}
       {visualizacao === 'lista' && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
@@ -350,7 +354,6 @@ export default function AgendaClient() {
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' as const }}>
               <p style={{ fontSize: 32, marginBottom: 12 }}>📅</p>
               <p style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Nenhum agendamento</p>
-              <p style={{ color: '#4A5568', fontSize: 13 }}>Clique em "+ AGENDAR" para criar.</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -369,7 +372,7 @@ export default function AgendaClient() {
                         <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
                       </div>
                       <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
-                        {ag.cliente?.nome || 'Sem cliente'}{ag.veiculo && ` · ${ag.veiculo.placa}`}{ag.duracao_minutos && ` · ${ag.duracao_minutos}min`}
+                        {ag.cliente?.nome || 'Sem cliente'}{ag.veiculo && ` · ${ag.veiculo.placa}`} · {formatarDuracao(ag.duracao_minutos || 60)}
                       </p>
                     </div>
                   </div>
@@ -406,12 +409,29 @@ export default function AgendaClient() {
                   </select>
                 </div>
               </div>
+
+              {/* Serviço com auto-duração */}
+              <div>
+                <label style={lbl}>Serviço</label>
+                <select style={inp} value={servicoNome} onChange={e => selecionarServico(e.target.value)}>
+                  <option value="">Selecionar do catálogo...</option>
+                  {servicos.map(s => (
+                    <option key={s.id} value={s.nome}>{s.nome} — {formatarDuracao(s.duracao_minutos || 60)}</option>
+                  ))}
+                </select>
+                {servicoNome && servicos.find(s => s.nome === servicoNome) && (
+                  <p style={{ color: '#90CDF4', fontSize: 11, marginTop: 5 }}>
+                    ⏱ Duração preenchida automaticamente: {formatarDuracao(parseInt(duracao))}
+                  </p>
+                )}
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={lbl}>Duração</label>
                   <select style={inp} value={duracao} onChange={e => setDuracao(e.target.value)}>
-                    {['30','60','90','120','150','180','240'].map(d => (
-                      <option key={d} value={d}>{parseInt(d) < 60 ? `${d}min` : `${Math.floor(parseInt(d)/60)}h${parseInt(d)%60 > 0 ? parseInt(d)%60+'min' : ''}`}</option>
+                    {[30,45,60,90,120,150,180,210,240,300,360,480].map(d => (
+                      <option key={d} value={d}>{formatarDuracao(d)}</option>
                     ))}
                   </select>
                 </div>
@@ -422,6 +442,7 @@ export default function AgendaClient() {
                   </select>
                 </div>
               </div>
+
               <div>
                 <label style={lbl}>Cliente</label>
                 <select style={inp} value={clienteId} onChange={e => { setClienteId(e.target.value); setVeiculoId('') }}>
@@ -438,13 +459,6 @@ export default function AgendaClient() {
                   </select>
                 </div>
               )}
-              <div>
-                <label style={lbl}>Serviço</label>
-                <select style={inp} value={servicoNome} onChange={e => setServicoNome(e.target.value)}>
-                  <option value="">Selecionar do catálogo...</option>
-                  {servicos.map(s => <option key={s.id} value={s.nome}>{s.nome}</option>)}
-                </select>
-              </div>
               <div>
                 <label style={lbl}>Observações</label>
                 <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' as const }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Detalhes adicionais..." />

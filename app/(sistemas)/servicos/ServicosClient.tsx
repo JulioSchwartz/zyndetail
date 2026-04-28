@@ -14,12 +14,13 @@ type Servico = {
   nome: string
   descricao: string
   preco: number
+  duracao_minutos: number
   ativo: boolean
   categoria_id?: string
 }
 
 const CATEGORIAS_SUGERIDAS = [
-  'Polimento', 'Vitrificação / Ceramic Coating', 'PPF', 
+  'Polimento', 'Vitrificação / Ceramic Coating', 'PPF',
   'Higienização', 'Lavagem', 'Insulfilm', 'Customização', 'Outros'
 ]
 
@@ -34,6 +35,14 @@ function precoParaNumero(v: string) {
   return parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0
 }
 
+function formatarDuracao(min: number) {
+  if (!min) return '—'
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
 export default function ServicosClient() {
   const router = useRouter()
   const [empresaId, setEmpresaId] = useState<string | null>(null)
@@ -44,7 +53,6 @@ export default function ServicosClient() {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
-  // Modais
   const [modalCategoria, setModalCategoria] = useState(false)
   const [modalServico, setModalServico] = useState(false)
   const [editandoServico, setEditandoServico] = useState<Servico | null>(null)
@@ -56,6 +64,7 @@ export default function ServicosClient() {
   const [nomeServico, setNomeServico] = useState('')
   const [descServico, setDescServico] = useState('')
   const [precoServico, setPrecoServico] = useState('')
+  const [duracaoServico, setDuracaoServico] = useState('60')
   const [catServico, setCatServico] = useState('')
 
   useEffect(() => {
@@ -107,21 +116,21 @@ export default function ServicosClient() {
     if (!catServico) { setErro('Selecione uma categoria.'); return }
     setSalvando(true)
 
+    const payload = {
+      nome: nomeServico.trim(),
+      descricao: descServico.trim() || null,
+      preco: precoParaNumero(precoServico),
+      duracao_minutos: parseInt(duracaoServico) || 60,
+      categoria_id: catServico,
+    }
+
     if (editandoServico) {
-      await supabase.from('servicos_catalogo').update({
-        nome: nomeServico.trim(),
-        descricao: descServico.trim() || null,
-        preco: precoParaNumero(precoServico),
-        categoria_id: catServico,
-      }).eq('id', editandoServico.id)
+      await supabase.from('servicos_catalogo').update(payload).eq('id', editandoServico.id)
     } else {
       await supabase.from('servicos_catalogo').insert({
         empresa_id: empresaId,
-        nome: nomeServico.trim(),
-        descricao: descServico.trim() || null,
-        preco: precoParaNumero(precoServico),
         ativo: true,
-        categoria_id: catServico,
+        ...payload,
       })
     }
 
@@ -147,12 +156,14 @@ export default function ServicosClient() {
     setNomeServico(s.nome)
     setDescServico(s.descricao || '')
     setPrecoServico(s.preco ? (s.preco.toFixed(2)).replace('.', ',') : '')
+    setDuracaoServico(String(s.duracao_minutos || 60))
     setCatServico(s.categoria_id || '')
     setModalServico(true)
   }
 
   function limparFormServico() {
-    setNomeServico(''); setDescServico(''); setPrecoServico(''); setCatServico(''); setEditandoServico(null); setErro('')
+    setNomeServico(''); setDescServico(''); setPrecoServico('')
+    setDuracaoServico('60'); setCatServico(''); setEditandoServico(null); setErro('')
   }
 
   const servicosFiltrados = categoriaSelecionada
@@ -188,18 +199,20 @@ export default function ServicosClient() {
           <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>{servicos.length} serviços · {categorias.length} categorias</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setModalCategoria(true)} style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '10px 16px', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer', letterSpacing: 1 }}>
+          <button onClick={() => setModalCategoria(true)}
+            style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '10px 16px', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer', letterSpacing: 1 }}>
             + CATEGORIA
           </button>
-          <button onClick={() => { limparFormServico(); setModalServico(true) }} style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
+          <button onClick={() => { limparFormServico(); setModalServico(true) }}
+            style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
             + SERVIÇO
           </button>
         </div>
       </div>
 
-      {/* Categorias — filtro horizontal */}
+      {/* Filtro categorias */}
       {categorias.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
           <button onClick={() => setCategoriaSelecionada(null)}
             style={{ background: !categoriaSelecionada ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${!categoriaSelecionada ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: !categoriaSelecionada ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: !categoriaSelecionada ? 700 : 400 }}>
             Todos ({servicos.length})
@@ -217,12 +230,12 @@ export default function ServicosClient() {
         </div>
       )}
 
-      {/* Sem categorias — onboarding */}
+      {/* Onboarding sem categorias */}
       {categorias.length === 0 && (
         <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.15)', borderRadius: 12, padding: 32, marginBottom: 16 }}>
           <p style={{ color: '#D4A843', fontSize: 13, fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>⚡ COMECE PELAS CATEGORIAS</p>
           <p style={{ color: '#4A5568', fontSize: 13, marginBottom: 16 }}>Sugestões para estéticas automotivas:</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
             {CATEGORIAS_SUGERIDAS.map(cat => (
               <button key={cat} onClick={() => salvarCategoria(cat)}
                 style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', color: '#D4A843', padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
@@ -235,7 +248,7 @@ export default function ServicosClient() {
 
       {/* Lista de serviços */}
       {servicosFiltrados.length === 0 && categorias.length > 0 ? (
-        <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
+        <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' as const }}>
           <p style={{ fontSize: 32, marginBottom: 12 }}>🛠️</p>
           <p style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Nenhum serviço cadastrado</p>
           <p style={{ color: '#4A5568', fontSize: 13 }}>Clique em "+ SERVIÇO" para adicionar.</p>
@@ -258,12 +271,15 @@ export default function ServicosClient() {
                   </div>
                   {s.descricao && <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>{s.descricao}</p>}
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ color: '#D4A843', fontSize: 16, fontWeight: 900, margin: '0 0 8px' }}>
+                <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                  <p style={{ color: '#D4A843', fontSize: 16, fontWeight: 900, margin: '0 0 4px' }}>
                     {s.preco > 0 ? `R$ ${s.preco.toFixed(2).replace('.', ',')}` : '—'}
                   </p>
+                  <p style={{ color: '#90CDF4', fontSize: 11, margin: '0 0 8px' }}>
+                    ⏱ {formatarDuracao(s.duracao_minutos || 60)}
+                  </p>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => toggleAtivo(s)} title={s.ativo ? 'Desativar' : 'Ativar'}
+                    <button onClick={() => toggleAtivo(s)}
                       style={{ background: s.ativo ? 'rgba(72,187,120,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${s.ativo ? 'rgba(72,187,120,0.3)' : 'rgba(255,255,255,0.08)'}`, color: s.ativo ? '#48BB78' : '#4A5568', padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
                       {s.ativo ? 'ON' : 'OFF'}
                     </button>
@@ -287,7 +303,7 @@ export default function ServicosClient() {
       {categorias.length > 0 && (
         <div style={{ marginTop: 20, background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', letterSpacing: 2, marginBottom: 12 }}>GERENCIAR CATEGORIAS</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
             {categorias.map(cat => (
               <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: '5px 12px' }}>
                 <span style={{ color: '#CBD5E0', fontSize: 12 }}>{cat.nome}</span>
@@ -314,7 +330,7 @@ export default function ServicosClient() {
               onKeyDown={e => e.key === 'Enter' && salvarCategoria(nomeCategoria)}
               placeholder="Ex: Polimento, PPF, Higienização..." autoFocus />
             <p style={{ color: '#4A5568', fontSize: 12, marginBottom: 16 }}>Sugestões:</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginBottom: 20 }}>
               {CATEGORIAS_SUGERIDAS.map(s => (
                 <button key={s} onClick={() => setNomeCategoria(s)}
                   style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.15)', color: '#D4A843', padding: '4px 10px', borderRadius: 14, fontSize: 11, cursor: 'pointer' }}>
@@ -351,16 +367,26 @@ export default function ServicosClient() {
               </div>
               <div>
                 <label style={lbl}>Categoria <span style={{ color: '#D4A843' }}>*</span></label>
-                <select style={{ ...inp }} value={catServico} onChange={e => setCatServico(e.target.value)}>
+                <select style={inp} value={catServico} onChange={e => setCatServico(e.target.value)}>
                   <option value="">Selecione uma categoria...</option>
                   {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={lbl}>Preço (R$)</label>
-                <input style={inp} value={precoServico}
-                  onChange={e => setPrecoServico(formatarPreco(e.target.value))}
-                  placeholder="0,00" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={lbl}>Preço (R$)</label>
+                  <input style={inp} value={precoServico}
+                    onChange={e => setPrecoServico(formatarPreco(e.target.value))}
+                    placeholder="0,00" />
+                </div>
+                <div>
+                  <label style={lbl}>Duração estimada</label>
+                  <select style={inp} value={duracaoServico} onChange={e => setDuracaoServico(e.target.value)}>
+                    {[30,45,60,90,120,150,180,210,240,300,360,480].map(d => (
+                      <option key={d} value={d}>{formatarDuracao(d)}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label style={lbl}>Descrição</label>
