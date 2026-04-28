@@ -8,7 +8,6 @@ type Agendamento = {
   empresa_id: string
   cliente_id?: string
   veiculo_id?: string
-  orcamento_id?: string
   titulo?: string
   data: string
   hora: string
@@ -24,11 +23,8 @@ type Agendamento = {
 
 type VisualizacaoTipo = 'semana' | 'lista'
 
-const HORAS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
-               '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30',
-               '17:00','17:30','18:00','18:30','19:00','19:30','20:00']
-
-const DIAS_SEMANA = ['dom','seg','ter','qua','qui','sex','sab']
+const DIAS_SEMANA_KEY = ['dom','seg','ter','qua','qui','sex','sab']
+const SLOT_HEIGHT = 52 // px por slot de 30min
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
   agendado:   { label: 'AGENDADO',   cor: '#90CDF4', bg: 'rgba(144,205,244,0.15)' },
@@ -52,7 +48,6 @@ function getDiasSemana(dataBase: Date) {
   return dias
 }
 
-// Formata data LOCAL sem conversão de fuso
 function formatarDataLocal(d: Date) {
   const ano = d.getFullYear()
   const mes = String(d.getMonth() + 1).padStart(2, '0')
@@ -62,6 +57,17 @@ function formatarDataLocal(d: Date) {
 
 function nomeDia(d: Date) {
   return d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase()
+}
+
+// Converte hora "HH:MM" em minutos desde meia-noite
+function horaParaMinutos(hora: string) {
+  const [h, m] = hora.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
+
+// Converte minutos em posição top relativa ao horário de abertura
+function minutosParaTop(minutos: number, aberturaMin: number) {
+  return ((minutos - aberturaMin) / 30) * SLOT_HEIGHT
 }
 
 export default function AgendaClient() {
@@ -80,7 +86,6 @@ export default function AgendaClient() {
   const [erro, setErro] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
 
-  // Form
   const [clienteId, setClienteId] = useState('')
   const [veiculoId, setVeiculoId] = useState('')
   const [titulo, setTitulo] = useState('')
@@ -98,11 +103,7 @@ export default function AgendaClient() {
       const { data: usuario } = await supabase.from('usuarios_detail').select('empresa_id').eq('user_id', session.user.id).maybeSingle()
       if (!usuario?.empresa_id) { router.push('/auth/login'); return }
       setEmpresaId(usuario.empresa_id)
-      await Promise.all([
-        carregarAgendamentos(usuario.empresa_id),
-        carregarDados(usuario.empresa_id),
-        carregarEmpresa(usuario.empresa_id),
-      ])
+      await Promise.all([carregarAgendamentos(usuario.empresa_id), carregarDados(usuario.empresa_id), carregarEmpresa(usuario.empresa_id)])
       setLoading(false)
     }
     init()
@@ -114,11 +115,7 @@ export default function AgendaClient() {
   }
 
   async function carregarAgendamentos(eid: string) {
-    const { data } = await supabase
-      .from('agendamentos')
-      .select('*, cliente:clientes(*), veiculo:veiculos(*)')
-      .eq('empresa_id', eid)
-      .order('data').order('hora')
+    const { data } = await supabase.from('agendamentos').select('*, cliente:clientes(*), veiculo:veiculos(*)').eq('empresa_id', eid).order('data').order('hora')
     setAgendamentos(data || [])
   }
 
@@ -139,17 +136,9 @@ export default function AgendaClient() {
     setSalvando(true)
 
     const payload: any = {
-      empresa_id: empresaId,
-      cliente_id: clienteId || null,
-      veiculo_id: veiculoId || null,
-      titulo: titulo.trim() || null,
-      data,
-      hora,
-      duracao_minutos: parseInt(duracao) || 60,
-      servico: servicoNome.trim() || null,
-      status,
-      observacoes: observacoes.trim() || null,
-      tipo: 'avulso',
+      empresa_id: empresaId, cliente_id: clienteId || null, veiculo_id: veiculoId || null,
+      titulo: titulo.trim() || null, data, hora, duracao_minutos: parseInt(duracao) || 60,
+      servico: servicoNome.trim() || null, status, observacoes: observacoes.trim() || null, tipo: 'avulso',
     }
 
     if (agendamentoSelecionado) {
@@ -173,23 +162,16 @@ export default function AgendaClient() {
   async function atualizarStatus(id: string, novoStatus: string) {
     await supabase.from('agendamentos').update({ status: novoStatus }).eq('id', id)
     await carregarAgendamentos(empresaId!)
-    if (agendamentoSelecionado?.id === id) {
-      setAgendamentoSelecionado(prev => prev ? { ...prev, status: novoStatus } : null)
-    }
+    if (agendamentoSelecionado?.id === id) setAgendamentoSelecionado(prev => prev ? { ...prev, status: novoStatus } : null)
   }
 
   function abrirModal(ag?: Agendamento, diaPreSelecionado?: string, horaPreSelecionada?: string) {
     if (ag) {
       setAgendamentoSelecionado(ag)
-      setClienteId(ag.cliente_id || '')
-      setVeiculoId(ag.veiculo_id || '')
-      setTitulo(ag.titulo || '')
-      setData(ag.data)
-      setHora(ag.hora)
-      setDuracao(String(ag.duracao_minutos || 60))
-      setServicoNome(ag.servico || '')
-      setStatus(ag.status)
-      setObservacoes(ag.observacoes || '')
+      setClienteId(ag.cliente_id || ''); setVeiculoId(ag.veiculo_id || '')
+      setTitulo(ag.titulo || ''); setData(ag.data); setHora(ag.hora.slice(0,5))
+      setDuracao(String(ag.duracao_minutos || 60)); setServicoNome(ag.servico || '')
+      setStatus(ag.status); setObservacoes(ag.observacoes || '')
     } else {
       setAgendamentoSelecionado(null)
       setClienteId(''); setVeiculoId(''); setTitulo('')
@@ -200,25 +182,27 @@ export default function AgendaClient() {
     setModalAberto(true)
   }
 
-  function fecharModal() {
-    setModalAberto(false)
-    setAgendamentoSelecionado(null)
-    setErro('')
-  }
+  function fecharModal() { setModalAberto(false); setAgendamentoSelecionado(null); setErro('') }
 
   const diasSemana = getDiasSemana(semanaBase)
   const veiculosCliente = clientes.find(c => c.id === clienteId)?.veiculos || []
   const hoje = formatarDataLocal(new Date())
   const diasFuncionamento: string[] = empresa?.dias_funcionamento || ['seg','ter','qua','qui','sex']
+  const horaAbertura = empresa?.horario_abertura?.slice(0, 5) || '08:00'
+  const horaFechamento = empresa?.horario_fechamento?.slice(0, 5) || '18:00'
+  const aberturaMin = horaParaMinutos(horaAbertura)
+  const fechamentoMin = horaParaMinutos(horaFechamento)
 
-  // Horas filtradas pelo horário de funcionamento
-  const horaAbertura = empresa?.horario_abertura?.slice(0, 5) || '07:00'
-  const horaFechamento = empresa?.horario_fechamento?.slice(0, 5) || '20:00'
-  const horasFiltradas = HORAS.filter(h => h >= horaAbertura && h <= horaFechamento)
+  // Gera slots de 30min entre abertura e fechamento
+  const slots: string[] = []
+  for (let m = aberturaMin; m < fechamentoMin; m += 30) {
+    const h = String(Math.floor(m / 60)).padStart(2, '0')
+    const min = String(m % 60).padStart(2, '0')
+    slots.push(`${h}:${min}`)
+  }
 
-  const agendamentosFiltrados = filtroStatus === 'todos'
-    ? agendamentos
-    : agendamentos.filter(a => a.status === filtroStatus)
+  const alturaGrid = slots.length * SLOT_HEIGHT
+  const agendamentosFiltrados = filtroStatus === 'todos' ? agendamentos : agendamentos.filter(a => a.status === filtroStatus)
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', flexDirection: 'column', gap: 16 }}>
@@ -274,18 +258,18 @@ export default function AgendaClient() {
           </div>
 
           <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden' }}>
-            {/* Cabeçalho dias */}
-            <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ padding: '10px 8px' }} />
+            {/* Cabeçalho */}
+            <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#080C18' }}>
+              <div />
               {diasSemana.map((dia, i) => {
                 const dStr = formatarDataLocal(dia)
                 const isHoje = dStr === hoje
-                const diaKey = DIAS_SEMANA[dia.getDay()]
+                const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
                 const diaAtivo = diasFuncionamento.includes(diaKey)
                 return (
-                  <div key={i} style={{ padding: '10px 8px', textAlign: 'center' as const, borderLeft: '1px solid rgba(255,255,255,0.04)', opacity: diaAtivo ? 1 : 0.4 }}>
-                    <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, margin: '0 0 4px', letterSpacing: 1 }}>{nomeDia(dia)}</p>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: isHoje ? '#D4A843' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                  <div key={i} style={{ padding: '10px 8px', textAlign: 'center' as const, borderLeft: '1px solid rgba(255,255,255,0.06)', opacity: diaAtivo ? 1 : 0.4 }}>
+                    <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, margin: '0 0 6px', letterSpacing: 1 }}>{nomeDia(dia)}</p>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: isHoje ? '#D4A843' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
                       <p style={{ color: isHoje ? '#080C18' : '#fff', fontSize: 14, fontWeight: isHoje ? 900 : 400, margin: 0 }}>{dia.getDate()}</p>
                     </div>
                     {!diaAtivo && <p style={{ color: '#4A5568', fontSize: 9, margin: '4px 0 0', letterSpacing: 1 }}>FECHADO</p>}
@@ -294,39 +278,55 @@ export default function AgendaClient() {
               })}
             </div>
 
-            {/* Linhas de hora */}
-            <div style={{ maxHeight: 520, overflowY: 'auto' as const }}>
-              {horasFiltradas.map(h => (
-                <div key={h} style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.03)', minHeight: 52 }}>
-                  <div style={{ padding: '6px 8px', display: 'flex', alignItems: 'flex-start' }}>
-                    <p style={{ color: '#2D3748', fontSize: 11, margin: 0 }}>{h}</p>
-                  </div>
-                  {diasSemana.map((dia, di) => {
-                    const dStr = formatarDataLocal(dia)
-                    const diaKey = DIAS_SEMANA[dia.getDay()]
-                    const diaAtivo = diasFuncionamento.includes(diaKey)
-                    const ags = agendamentos.filter(a => a.data === dStr && a.hora.slice(0, 5) === h)
-                    return (
-                      <div key={di}
-                        onClick={() => { if (diaAtivo && ags.length === 0) abrirModal(undefined, dStr, h) }}
-                        style={{ borderLeft: '1px solid rgba(255,255,255,0.04)', padding: '2px 4px', cursor: diaAtivo && ags.length === 0 ? 'pointer' : 'default', minHeight: 52, background: !diaAtivo ? 'rgba(0,0,0,0.2)' : 'transparent', position: 'relative' as const }}>
-                        {ags.map(ag => {
-                          const st = STATUS_CONFIG[ag.status] || STATUS_CONFIG.agendado
-                          return (
-                            <div key={ag.id} onClick={e => { e.stopPropagation(); abrirModal(ag) }}
-                              style={{ background: st.bg, border: `1px solid ${st.cor}55`, borderRadius: 6, padding: '4px 6px', marginBottom: 2, cursor: 'pointer' }}>
-                              <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                                {ag.titulo || ag.servico || ag.cliente?.nome || 'Agendamento'}
-                              </p>
-                              {ag.cliente && <p style={{ color: '#4A5568', fontSize: 10, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })}
+            {/* Grid com posicionamento absoluto */}
+            <div style={{ maxHeight: 560, overflowY: 'auto' as const }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', position: 'relative' as const }}>
+                {/* Coluna de horas */}
+                <div style={{ position: 'relative' as const, height: alturaGrid }}>
+                  {slots.map((slot, i) => (
+                    <div key={slot} style={{ position: 'absolute' as const, top: i * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', alignItems: 'flex-start', paddingTop: 4, paddingLeft: 6 }}>
+                      <p style={{ color: '#2D3748', fontSize: 10, margin: 0 }}>{slot}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+
+                {/* Colunas dos dias */}
+                {diasSemana.map((dia, di) => {
+                  const dStr = formatarDataLocal(dia)
+                  const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
+                  const diaAtivo = diasFuncionamento.includes(diaKey)
+                  const agsNoDia = agendamentos.filter(a => a.data === dStr)
+
+                  return (
+                    <div key={di} style={{ position: 'relative' as const, height: alturaGrid, borderLeft: '1px solid rgba(255,255,255,0.04)', background: !diaAtivo ? 'rgba(0,0,0,0.15)' : 'transparent' }}>
+                      {/* Linhas de slot clicáveis */}
+                      {slots.map((slot, si) => (
+                        <div key={slot} onClick={() => { if (diaAtivo) abrirModal(undefined, dStr, slot) }}
+                          style={{ position: 'absolute' as const, top: si * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: diaAtivo ? 'pointer' : 'default' }} />
+                      ))}
+
+                      {/* Agendamentos posicionados */}
+                      {agsNoDia.map(ag => {
+                        const agMin = horaParaMinutos(ag.hora)
+                        const top = minutosParaTop(agMin, aberturaMin)
+                        const altura = Math.max(((ag.duracao_minutos || 60) / 30) * SLOT_HEIGHT - 4, SLOT_HEIGHT - 4)
+                        const st = STATUS_CONFIG[ag.status] || STATUS_CONFIG.agendado
+                        const label = ag.titulo || ag.servico || ag.cliente?.nome || 'Agendamento'
+                        const showCliente = altura > 40 && ag.cliente
+
+                        return (
+                          <div key={ag.id} onClick={e => { e.stopPropagation(); abrirModal(ag) }}
+                            style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', zIndex: 1 }}>
+                            <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
+                            {showCliente && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
+                            {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {ag.duracao_minutos}min</p>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -346,7 +346,6 @@ export default function AgendaClient() {
               )
             })}
           </div>
-
           {agendamentosFiltrados.length === 0 ? (
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' as const }}>
               <p style={{ fontSize: 32, marginBottom: 12 }}>📅</p>
@@ -361,10 +360,8 @@ export default function AgendaClient() {
                   <div key={ag.id} onClick={() => abrirModal(ag)}
                     style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
                     <div style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' as const, flexShrink: 0, minWidth: 60 }}>
-                      <p style={{ color: '#D4A843', fontSize: 14, fontWeight: 900, margin: 0 }}>{ag.hora}</p>
-                      <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0' }}>
-                        {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                      </p>
+                      <p style={{ color: '#D4A843', fontSize: 14, fontWeight: 900, margin: 0 }}>{ag.hora.slice(0,5)}</p>
+                      <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0' }}>{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</p>
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -372,9 +369,7 @@ export default function AgendaClient() {
                         <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
                       </div>
                       <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
-                        {ag.cliente?.nome || 'Sem cliente'}
-                        {ag.veiculo && ` · ${ag.veiculo.placa}`}
-                        {ag.duracao_minutos && ` · ${ag.duracao_minutos}min`}
+                        {ag.cliente?.nome || 'Sem cliente'}{ag.veiculo && ` · ${ag.veiculo.placa}`}{ag.duracao_minutos && ` · ${ag.duracao_minutos}min`}
                       </p>
                     </div>
                   </div>
@@ -390,9 +385,7 @@ export default function AgendaClient() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
           <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' as const }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 900, margin: 0 }}>
-                {agendamentoSelecionado ? 'Editar Agendamento' : 'Novo Agendamento'}
-              </h2>
+              <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 900, margin: 0 }}>{agendamentoSelecionado ? 'Editar Agendamento' : 'Novo Agendamento'}</h2>
               <button onClick={fecharModal} style={{ background: 'transparent', border: 'none', color: '#4A5568', fontSize: 20, cursor: 'pointer' }}>✕</button>
             </div>
 
@@ -409,7 +402,7 @@ export default function AgendaClient() {
                 <div>
                   <label style={lbl}>Horário <span style={{ color: '#D4A843' }}>*</span></label>
                   <select style={inp} value={hora} onChange={e => setHora(e.target.value)}>
-                    {horasFiltradas.map(h => <option key={h} value={h}>{h}</option>)}
+                    {slots.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </div>
               </div>
@@ -418,7 +411,7 @@ export default function AgendaClient() {
                   <label style={lbl}>Duração</label>
                   <select style={inp} value={duracao} onChange={e => setDuracao(e.target.value)}>
                     {['30','60','90','120','150','180','240'].map(d => (
-                      <option key={d} value={d}>{parseInt(d) < 60 ? `${d}min` : `${parseInt(d)/60}h${parseInt(d)%60 > 0 ? parseInt(d)%60+'min' : ''}`}</option>
+                      <option key={d} value={d}>{parseInt(d) < 60 ? `${d}min` : `${Math.floor(parseInt(d)/60)}h${parseInt(d)%60 > 0 ? parseInt(d)%60+'min' : ''}`}</option>
                     ))}
                   </select>
                 </div>
@@ -461,7 +454,7 @@ export default function AgendaClient() {
             {erro && <div style={{ color: '#FC8181', fontSize: 13, margin: '12px 0', background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 8, padding: '8px 12px' }}>{erro}</div>}
 
             {agendamentoSelecionado && (
-              <div style={{ marginTop: 16, marginBottom: 4 }}>
+              <div style={{ marginTop: 16 }}>
                 <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>STATUS RÁPIDO</p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
