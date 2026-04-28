@@ -14,12 +14,13 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
   }
 
   const menu = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/clientes', label: 'Clientes' },
-    { href: '/servicos', label: 'Serviços' },
-    { href: '/orcamentos', label: 'Orçamentos' },
-    { href: '/ordens', label: 'OS' },
-    { href: '/agenda', label: 'Agenda' },
+    { href: '/dashboard',   label: 'Dashboard'  },
+    { href: '/clientes',    label: 'Clientes'   },
+    { href: '/servicos',    label: 'Serviços'   },
+    { href: '/orcamentos',  label: 'Orçamentos' },
+    { href: '/ordens',      label: 'OS'         },
+    { href: '/agenda',      label: 'Agenda'     },
+    { href: '/planos',      label: 'Planos'     },
   ]
 
   if (pathname === '/setup') return <>{children}</>
@@ -45,7 +46,7 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
           {menu.map(item => {
             const ativo = pathname === item.href
             return (
-              <a key={item.href} href={item.href} style={{ color: ativo ? '#D4A843' : '#4A5568', textDecoration: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: ativo ? 700 : 400, background: ativo ? 'rgba(212,168,67,0.1)' : 'transparent', letterSpacing: 0.3, transition: 'all 0.2s', border: ativo ? '1px solid rgba(212,168,67,0.2)' : '1px solid transparent' }}>
+              <a key={item.href} href={item.href} style={{ color: ativo ? '#D4A843' : '#4A5568', textDecoration: 'none', padding: '6px 11px', borderRadius: 6, fontSize: 12, fontWeight: ativo ? 700 : 400, background: ativo ? 'rgba(212,168,67,0.1)' : 'transparent', letterSpacing: 0.3, transition: 'all 0.2s', border: ativo ? '1px solid rgba(212,168,67,0.2)' : '1px solid transparent' }}>
                 {item.label}
               </a>
             )
@@ -74,7 +75,7 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
       </main>
 
       <style>{`
-        @media (max-width: 768px) {
+        @media (max-width: 900px) {
           .hamburger { display: flex !important; }
           .nav-desktop { display: none !important; }
         }
