@@ -23,7 +23,7 @@ type Plano = {
   veiculo?: any
 }
 
-type Aba = 'lista' | 'novo' | 'detalhe'
+type Aba = 'lista' | 'novo' | 'detalhe' | 'editar'
 
 const PERIODICIDADE: Record<string, { label: string, icon: string, cor: string, dias: number }> = {
   semanal:   { label: 'Semanal',   icon: '🔄', cor: '#D4A843', dias: 7  },
@@ -76,7 +76,7 @@ export default function PlanosClient() {
   const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState('todos')
 
-  // Form
+  // Form (novo e editar)
   const [clienteId, setClienteId] = useState('')
   const [veiculoId, setVeiculoId] = useState('')
   const [periodicidade, setPeriodicidade] = useState('semanal')
@@ -118,7 +118,6 @@ export default function PlanosClient() {
     setServicos(servs || [])
   }
 
-  // Cria agendamento na agenda e retorna o id
   async function criarAgendamento(planoData: {
     empresa_id: string, cliente_id: string, veiculo_id: string,
     data: string, hora: string, servicos: string[], observacoes?: string
@@ -139,16 +138,22 @@ export default function PlanosClient() {
     return data?.id || null
   }
 
-  async function salvarPlano() {
+  async function salvarNovo() {
     setErro('')
     if (!clienteId) { setErro('Selecione um cliente.'); return }
     if (!veiculoId) { setErro('Selecione um veículo.'); return }
     if (servicosSelecionados.length === 0) { setErro('Selecione ao menos um serviço.'); return }
-    setSalvando(true)
 
+    // Verifica se já existe plano ativo para este veículo
+    const planoExistente = planos.find(p => p.veiculo_id === veiculoId && p.status === 'ativo')
+    if (planoExistente) {
+      setErro(`Este veículo já possui um plano ativo (${PERIODICIDADE[planoExistente.periodicidade]?.label}). Cancele ou pause o plano atual antes de criar um novo.`)
+      return
+    }
+
+    setSalvando(true)
     const proximo = calcularProximoAtendimento(ultimoAtendimento || undefined, periodicidade)
 
-    // Cria o agendamento na agenda
     const agId = await criarAgendamento({
       empresa_id: empresaId!,
       cliente_id: clienteId,
@@ -176,23 +181,74 @@ export default function PlanosClient() {
     })
 
     if (error) { setErro('Erro ao salvar plano.'); setSalvando(false); return }
-
     await carregarPlanos(empresaId!)
     limparForm()
     setAba('lista')
     setSalvando(false)
   }
 
+  async function salvarEdicao() {
+    setErro('')
+    if (!planoSelecionado) return
+    if (servicosSelecionados.length === 0) { setErro('Selecione ao menos um serviço.'); return }
+    setSalvando(true)
+
+    // Se mudou hora/periodicidade, recalcula próximo e recria agendamento
+    const proximoAtual = planoSelecionado.proximo_atendimento || calcularProximoAtendimento(planoSelecionado.ultimo_atendimento, periodicidade)
+
+    // Atualiza agendamento existente se houver
+    if (planoSelecionado.agendamento_id) {
+      await supabase.from('agendamentos').update({
+        titulo: `Plano — ${servicosSelecionados.join(', ')}`,
+        hora: horaPreferida,
+        servico: servicosSelecionados.join(', '),
+      }).eq('id', planoSelecionado.agendamento_id)
+    }
+
+    await supabase.from('planos_manutencao').update({
+      periodicidade,
+      dia_semana: diaSemana || null,
+      hora_preferida: horaPreferida || null,
+      servicos: servicosSelecionados,
+      valor_mensal: valorMensal ? parseFloat(valorMensal.replace(',', '.')) : null,
+      observacoes: observacoes.trim() || null,
+    }).eq('id', planoSelecionado.id)
+
+    await carregarPlanos(empresaId!)
+
+    // Atualiza o plano selecionado para refletir as mudanças
+    const { data: atualizado } = await supabase
+      .from('planos_manutencao')
+      .select('*, cliente:clientes(*), veiculo:veiculos(*)')
+      .eq('id', planoSelecionado.id)
+      .single()
+    setPlanoSelecionado(atualizado)
+
+    setAba('detalhe')
+    setSalvando(false)
+  }
+
+  function abrirEditar(p: Plano) {
+    setPlanoSelecionado(p)
+    setPeriodicidade(p.periodicidade)
+    setDiaSemana(p.dia_semana || 'seg')
+    setHoraPreferida(p.hora_preferida?.slice(0,5) || '09:00')
+    setServicosSelecionados(p.servicos || [])
+    setValorMensal(p.valor_mensal ? String(p.valor_mensal).replace('.', ',') : '')
+    setObservacoes(p.observacoes || '')
+    setUltimoAtendimento(p.ultimo_atendimento || '')
+    setErro('')
+    setAba('editar')
+  }
+
   async function registrarAtendimento(plano: Plano) {
     const hoje = new Date().toISOString().split('T')[0]
     const proximo = calcularProximoAtendimento(hoje, plano.periodicidade)
 
-    // Marca agendamento atual como concluído
     if (plano.agendamento_id) {
       await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', plano.agendamento_id)
     }
 
-    // Cria novo agendamento para o próximo
     const novoAgId = await criarAgendamento({
       empresa_id: plano.empresa_id,
       cliente_id: plano.cliente_id,
@@ -212,10 +268,7 @@ export default function PlanosClient() {
     await carregarPlanos(empresaId!)
     if (planoSelecionado?.id === plano.id) {
       setPlanoSelecionado(prev => prev ? {
-        ...prev,
-        ultimo_atendimento: hoje,
-        proximo_atendimento: proximo,
-        agendamento_id: novoAgId || undefined,
+        ...prev, ultimo_atendimento: hoje, proximo_atendimento: proximo, agendamento_id: novoAgId || undefined,
       } : null)
     }
   }
@@ -262,6 +315,103 @@ export default function PlanosClient() {
 
   const inp: React.CSSProperties = { width: '100%', padding: '10px 14px', background: '#080C18', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box' as const, outline: 'none' }
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }
+
+  // Formulário compartilhado entre novo e editar
+  const FormularioPlano = ({ modoEdicao }: { modoEdicao: boolean }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 760 }}>
+      {!modoEdicao && (
+        <div style={{ gridColumn: '1 / -1', background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>CLIENTE E VEÍCULO</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={lbl}>Cliente <span style={{ color: '#D4A843' }}>*</span></label>
+              <select style={inp} value={clienteId} onChange={e => { setClienteId(e.target.value); setVeiculoId(''); setErro('') }}>
+                <option value="">Selecione...</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Veículo <span style={{ color: '#D4A843' }}>*</span></label>
+              <select style={inp} value={veiculoId} onChange={e => { setVeiculoId(e.target.value); setErro('') }} disabled={!clienteId}>
+                <option value="">Selecione...</option>
+                {veiculosCliente.map((v: any) => {
+                  const temPlano = planos.find(p => p.veiculo_id === v.id && p.status === 'ativo')
+                  return <option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}{temPlano ? ' ⚠️ JÁ TEM PLANO' : ''}</option>
+                })}
+              </select>
+              {veiculoId && planos.find(p => p.veiculo_id === veiculoId && p.status === 'ativo') && (
+                <p style={{ color: '#FC8181', fontSize: 11, marginTop: 6 }}>⚠️ Este veículo já possui um plano ativo.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>PERIODICIDADE</p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {Object.entries(PERIODICIDADE).map(([k, v]) => (
+            <button key={k} onClick={() => setPeriodicidade(k)}
+              style={{ flex: 1, background: periodicidade === k ? `${v.cor}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${periodicidade === k ? v.cor + '55' : 'rgba(255,255,255,0.08)'}`, color: periodicidade === k ? v.cor : '#4A5568', padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: periodicidade === k ? 700 : 400, textAlign: 'center' as const }}>
+              <div style={{ fontSize: 18, marginBottom: 4 }}>{v.icon}</div>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={lbl}>Dia preferido</label>
+            <select style={inp} value={diaSemana} onChange={e => setDiaSemana(e.target.value)}>
+              {DIAS_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Horário preferido</label>
+            <select style={inp} value={horaPreferida} onChange={e => setHoraPreferida(e.target.value)}>
+              {HORAS.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>VALOR E HISTÓRICO</p>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Valor mensal (R$)</label>
+          <input style={inp} value={valorMensal} onChange={e => setValorMensal(e.target.value)} placeholder="Ex: 150,00" />
+        </div>
+        {!modoEdicao && (
+          <div>
+            <label style={lbl}>Último atendimento</label>
+            <input style={inp} type="date" value={ultimoAtendimento} onChange={e => setUltimoAtendimento(e.target.value)} />
+            <p style={{ color: '#4A5568', fontSize: 11, marginTop: 6 }}>Deixe vazio para calcular a partir de hoje.</p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ gridColumn: '1 / -1', background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>
+          SERVIÇOS DO PLANO <span style={{ color: '#D4A843' }}>*</span>
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, marginBottom: 12 }}>
+          {servicos.map(s => {
+            const sel = servicosSelecionados.includes(s.nome)
+            return (
+              <button key={s.id} onClick={() => toggleServico(s.nome)}
+                style={{ background: sel ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sel ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: sel ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: sel ? 700 : 400 }}>
+                {sel ? '✓ ' : ''}{s.nome}
+              </button>
+            )
+          })}
+          {servicos.length === 0 && <p style={{ color: '#4A5568', fontSize: 13 }}>Nenhum serviço ativo no catálogo.</p>}
+        </div>
+        <div>
+          <label style={lbl}>Observações</label>
+          <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' as const }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Detalhes do plano, preferências do cliente..." />
+        </div>
+      </div>
+    </div>
+  )
 
   // ── LISTA ──
   if (aba === 'lista') return (
@@ -317,32 +467,38 @@ export default function PlanosClient() {
             const diasRestantes = p.proximo_atendimento ? diasAteProximo(p.proximo_atendimento) : null
             const urgente = diasRestantes !== null && diasRestantes <= 2 && p.status === 'ativo'
             return (
-              <div key={p.id} onClick={() => { setPlanoSelecionado(p); setAba('detalhe') }}
-                style={{ background: '#0D1220', border: `1px solid ${urgente ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 16, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={{ background: `${per?.cor}18`, border: `1px solid ${per?.cor}44`, borderRadius: 12, width: 52, height: 52, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: 20 }}>{per?.icon}</span>
-                  <p style={{ color: per?.cor, fontSize: 9, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{per?.label.toUpperCase().slice(0,3)}</p>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, margin: 0 }}>{p.cliente?.nome}</p>
-                    <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
-                    {urgente && <span style={{ background: 'rgba(212,168,67,0.15)', color: '#D4A843', fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>⏰ HOJE/AMANHÃ</span>}
+              <div key={p.id} style={{ background: '#0D1220', border: `1px solid ${urgente ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 16, display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div onClick={() => { setPlanoSelecionado(p); setAba('detalhe') }} style={{ display: 'flex', gap: 14, alignItems: 'center', flex: 1, cursor: 'pointer' }}>
+                  <div style={{ background: `${per?.cor}18`, border: `1px solid ${per?.cor}44`, borderRadius: 12, width: 52, height: 52, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 20 }}>{per?.icon}</span>
+                    <p style={{ color: per?.cor, fontSize: 9, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{per?.label.toUpperCase().slice(0,3)}</p>
                   </div>
-                  <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
-                    {p.veiculo?.marca} {p.veiculo?.modelo} · {p.veiculo?.placa}
-                    {p.hora_preferida && ` · ${p.hora_preferida.slice(0,5)}`}
-                  </p>
-                  <p style={{ color: '#4A5568', fontSize: 11, margin: '4px 0 0' }}>{(p.servicos || []).join(' · ')}</p>
-                </div>
-                <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
-                  {p.valor_mensal && <p style={{ color: '#D4A843', fontSize: 15, fontWeight: 900, margin: '0 0 4px' }}>R$ {p.valor_mensal.toFixed(2).replace('.', ',')}<span style={{ color: '#4A5568', fontSize: 10 }}>/mês</span></p>}
-                  {p.proximo_atendimento && (
-                    <p style={{ color: diasRestantes !== null && diasRestantes <= 0 ? '#FC8181' : diasRestantes !== null && diasRestantes <= 2 ? '#D4A843' : '#4A5568', fontSize: 11, margin: 0, fontWeight: urgente ? 700 : 400 }}>
-                      {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado' : `Em ${diasRestantes}d`}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, margin: 0 }}>{p.cliente?.nome}</p>
+                      <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
+                      {urgente && <span style={{ background: 'rgba(212,168,67,0.15)', color: '#D4A843', fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>⏰ HOJE/AMANHÃ</span>}
+                    </div>
+                    <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
+                      {p.veiculo?.marca} {p.veiculo?.modelo} · {p.veiculo?.placa}
+                      {p.hora_preferida && ` · ${p.hora_preferida.slice(0,5)}`}
                     </p>
-                  )}
+                    <p style={{ color: '#4A5568', fontSize: 11, margin: '4px 0 0' }}>{(p.servicos || []).join(' · ')}</p>
+                  </div>
+                  <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                    {p.valor_mensal && <p style={{ color: '#D4A843', fontSize: 15, fontWeight: 900, margin: '0 0 4px' }}>R$ {p.valor_mensal.toFixed(2).replace('.', ',')}<span style={{ color: '#4A5568', fontSize: 10 }}>/mês</span></p>}
+                    {p.proximo_atendimento && (
+                      <p style={{ color: diasRestantes !== null && diasRestantes <= 0 ? '#FC8181' : diasRestantes !== null && diasRestantes <= 2 ? '#D4A843' : '#4A5568', fontSize: 11, margin: 0, fontWeight: urgente ? 700 : 400 }}>
+                        {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado' : `Em ${diasRestantes}d`}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                {/* Botão editar na lista */}
+                <button onClick={() => abrirEditar(p)}
+                  style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', color: '#D4A843', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                  EDITAR
+                </button>
               </div>
             )
           })}
@@ -366,95 +522,41 @@ export default function PlanosClient() {
         <p style={{ color: '#90CDF4', fontSize: 13, margin: 0 }}>📅 O agendamento será criado automaticamente na Agenda para o próximo atendimento.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 760 }}>
-        <div style={{ gridColumn: '1 / -1', background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>CLIENTE E VEÍCULO</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={lbl}>Cliente <span style={{ color: '#D4A843' }}>*</span></label>
-              <select style={inp} value={clienteId} onChange={e => { setClienteId(e.target.value); setVeiculoId('') }}>
-                <option value="">Selecione...</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Veículo <span style={{ color: '#D4A843' }}>*</span></label>
-              <select style={inp} value={veiculoId} onChange={e => setVeiculoId(e.target.value)} disabled={!clienteId}>
-                <option value="">Selecione...</option>
-                {veiculosCliente.map((v: any) => <option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>PERIODICIDADE</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {Object.entries(PERIODICIDADE).map(([k, v]) => (
-              <button key={k} onClick={() => setPeriodicidade(k)}
-                style={{ flex: 1, background: periodicidade === k ? `${v.cor}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${periodicidade === k ? v.cor + '55' : 'rgba(255,255,255,0.08)'}`, color: periodicidade === k ? v.cor : '#4A5568', padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: periodicidade === k ? 700 : 400, textAlign: 'center' as const }}>
-                <div style={{ fontSize: 18, marginBottom: 4 }}>{v.icon}</div>
-                {v.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={lbl}>Dia preferido</label>
-              <select style={inp} value={diaSemana} onChange={e => setDiaSemana(e.target.value)}>
-                {DIAS_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Horário preferido</label>
-              <select style={inp} value={horaPreferida} onChange={e => setHoraPreferida(e.target.value)}>
-                {HORAS.map(h => <option key={h} value={h}>{h}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>VALOR E HISTÓRICO</p>
-          <div style={{ marginBottom: 12 }}>
-            <label style={lbl}>Valor mensal (R$)</label>
-            <input style={inp} value={valorMensal} onChange={e => setValorMensal(e.target.value)} placeholder="Ex: 150,00" />
-          </div>
-          <div>
-            <label style={lbl}>Último atendimento</label>
-            <input style={inp} type="date" value={ultimoAtendimento} onChange={e => setUltimoAtendimento(e.target.value)} />
-            <p style={{ color: '#4A5568', fontSize: 11, marginTop: 6 }}>Deixe vazio para calcular a partir de hoje.</p>
-          </div>
-        </div>
-
-        <div style={{ gridColumn: '1 / -1', background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>
-            SERVIÇOS DO PLANO <span style={{ color: '#D4A843' }}>*</span>
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, marginBottom: 12 }}>
-            {servicos.map(s => {
-              const sel = servicosSelecionados.includes(s.nome)
-              return (
-                <button key={s.id} onClick={() => toggleServico(s.nome)}
-                  style={{ background: sel ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sel ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: sel ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: sel ? 700 : 400 }}>
-                  {sel ? '✓ ' : ''}{s.nome}
-                </button>
-              )
-            })}
-            {servicos.length === 0 && <p style={{ color: '#4A5568', fontSize: 13 }}>Nenhum serviço ativo no catálogo.</p>}
-          </div>
-          <div>
-            <label style={lbl}>Observações</label>
-            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' as const }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Detalhes do plano, preferências do cliente..." />
-          </div>
-        </div>
-      </div>
+      <FormularioPlano modoEdicao={false} />
 
       {erro && <div style={{ color: '#FC8181', fontSize: 13, margin: '16px 0', background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 8, padding: '10px 14px', maxWidth: 760 }}>{erro}</div>}
 
-      <button onClick={salvarPlano} disabled={salvando}
+      <button onClick={salvarNovo} disabled={salvando}
         style={{ width: '100%', maxWidth: 760, background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 16, borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: 'pointer', letterSpacing: 1, marginTop: 16 }}>
         {salvando ? 'SALVANDO...' : 'CRIAR PLANO E AGENDAR'}
+      </button>
+    </div>
+  )
+
+  // ── EDITAR PLANO ──
+  if (aba === 'editar' && planoSelecionado) return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <button onClick={() => setAba('detalhe')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#4A5568', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>← Voltar</button>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>Editar Plano — {planoSelecionado.cliente?.nome}</h1>
+          <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, padding: '10px 16px', marginBottom: 20, maxWidth: 760 }}>
+        <p style={{ color: '#D4A843', fontSize: 13, margin: 0 }}>
+          ✏️ Editando plano de <strong>{planoSelecionado.veiculo?.marca} {planoSelecionado.veiculo?.modelo}</strong> ({planoSelecionado.veiculo?.placa}). Cliente e veículo não podem ser alterados.
+        </p>
+      </div>
+
+      <FormularioPlano modoEdicao={true} />
+
+      {erro && <div style={{ color: '#FC8181', fontSize: 13, margin: '16px 0', background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', borderRadius: 8, padding: '10px 14px', maxWidth: 760 }}>{erro}</div>}
+
+      <button onClick={salvarEdicao} disabled={salvando}
+        style={{ width: '100%', maxWidth: 760, background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 16, borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: 'pointer', letterSpacing: 1, marginTop: 16 }}>
+        {salvando ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}
       </button>
     </div>
   )
@@ -477,7 +579,14 @@ export default function PlanosClient() {
             </div>
             <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
           </div>
-          <button onClick={() => excluirPlano(planoSelecionado.id)} style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>EXCLUIR</button>
+          <button onClick={() => abrirEditar(planoSelecionado)}
+            style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+            ✏️ EDITAR
+          </button>
+          <button onClick={() => excluirPlano(planoSelecionado.id)}
+            style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+            EXCLUIR
+          </button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16 }}>
