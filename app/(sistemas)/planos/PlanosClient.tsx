@@ -17,6 +17,7 @@ type Plano = {
   observacoes?: string
   ultimo_atendimento?: string
   proximo_atendimento?: string
+  agendamento_id?: string
   criado_em: string
   cliente?: any
   veiculo?: any
@@ -31,14 +32,14 @@ const PERIODICIDADE: Record<string, { label: string, icon: string, cor: string, 
 }
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
-  ativo:     { label: 'ATIVO',     cor: '#48BB78', bg: 'rgba(72,187,120,0.1)'  },
-  pausado:   { label: 'PAUSADO',   cor: '#D4A843', bg: 'rgba(212,168,67,0.1)' },
+  ativo:     { label: 'ATIVO',     cor: '#48BB78', bg: 'rgba(72,187,120,0.1)'   },
+  pausado:   { label: 'PAUSADO',   cor: '#D4A843', bg: 'rgba(212,168,67,0.1)'  },
   cancelado: { label: 'CANCELADO', cor: '#FC8181', bg: 'rgba(252,129,129,0.1)' },
 }
 
 const DIAS_OPTIONS = [
-  { key: 'seg', label: 'Segunda' }, { key: 'ter', label: 'Terça' },
-  { key: 'qua', label: 'Quarta'  }, { key: 'qui', label: 'Quinta' },
+  { key: 'seg', label: 'Segunda' }, { key: 'ter', label: 'Terça'   },
+  { key: 'qua', label: 'Quarta'  }, { key: 'qui', label: 'Quinta'  },
   { key: 'sex', label: 'Sexta'   }, { key: 'sab', label: 'Sábado' },
   { key: 'dom', label: 'Domingo' },
 ]
@@ -55,7 +56,7 @@ function calcularProximoAtendimento(ultimo: string | undefined, periodicidade: s
 }
 
 function diasAteProximo(data: string): number {
-  const hoje = new Date()
+  const hoje = new Date(); hoje.setHours(0,0,0,0)
   const proximo = new Date(data + 'T12:00:00')
   return Math.ceil((proximo.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 }
@@ -115,6 +116,27 @@ export default function PlanosClient() {
     setServicos(servs || [])
   }
 
+  // Cria agendamento na agenda e retorna o id
+  async function criarAgendamento(planoData: {
+    empresa_id: string, cliente_id: string, veiculo_id: string,
+    data: string, hora: string, servicos: string[], observacoes?: string
+  }): Promise<string | null> {
+    const { data } = await supabase.from('agendamentos').insert({
+      empresa_id: planoData.empresa_id,
+      cliente_id: planoData.cliente_id,
+      veiculo_id: planoData.veiculo_id,
+      titulo: `Plano — ${planoData.servicos.join(', ')}`,
+      data: planoData.data,
+      hora: planoData.hora,
+      duracao_minutos: 60,
+      servico: planoData.servicos.join(', '),
+      status: 'agendado',
+      observacoes: planoData.observacoes || null,
+      tipo: 'plano',
+    }).select('id').single()
+    return data?.id || null
+  }
+
   async function salvarPlano() {
     setErro('')
     if (!clienteId) { setErro('Selecione um cliente.'); return }
@@ -124,7 +146,18 @@ export default function PlanosClient() {
 
     const proximo = calcularProximoAtendimento(ultimoAtendimento || undefined, periodicidade)
 
-    const payload: any = {
+    // Cria o agendamento na agenda
+    const agId = await criarAgendamento({
+      empresa_id: empresaId!,
+      cliente_id: clienteId,
+      veiculo_id: veiculoId,
+      data: proximo,
+      hora: horaPreferida,
+      servicos: servicosSelecionados,
+      observacoes: observacoes || undefined,
+    })
+
+    const { error } = await supabase.from('planos_manutencao').insert({
       empresa_id: empresaId,
       cliente_id: clienteId,
       veiculo_id: veiculoId,
@@ -137,9 +170,9 @@ export default function PlanosClient() {
       observacoes: observacoes.trim() || null,
       ultimo_atendimento: ultimoAtendimento || null,
       proximo_atendimento: proximo,
-    }
+      agendamento_id: agId,
+    })
 
-    const { error } = await supabase.from('planos_manutencao').insert(payload)
     if (error) { setErro('Erro ao salvar plano.'); setSalvando(false); return }
 
     await carregarPlanos(empresaId!)
@@ -148,23 +181,47 @@ export default function PlanosClient() {
     setSalvando(false)
   }
 
+  async function registrarAtendimento(plano: Plano) {
+    const hoje = new Date().toISOString().split('T')[0]
+    const proximo = calcularProximoAtendimento(hoje, plano.periodicidade)
+
+    // Marca agendamento atual como concluído
+    if (plano.agendamento_id) {
+      await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', plano.agendamento_id)
+    }
+
+    // Cria novo agendamento para o próximo
+    const novoAgId = await criarAgendamento({
+      empresa_id: plano.empresa_id,
+      cliente_id: plano.cliente_id,
+      veiculo_id: plano.veiculo_id,
+      data: proximo,
+      hora: plano.hora_preferida || '09:00',
+      servicos: plano.servicos || [],
+      observacoes: plano.observacoes || undefined,
+    })
+
+    await supabase.from('planos_manutencao').update({
+      ultimo_atendimento: hoje,
+      proximo_atendimento: proximo,
+      agendamento_id: novoAgId,
+    }).eq('id', plano.id)
+
+    await carregarPlanos(empresaId!)
+    if (planoSelecionado?.id === plano.id) {
+      setPlanoSelecionado(prev => prev ? {
+        ...prev,
+        ultimo_atendimento: hoje,
+        proximo_atendimento: proximo,
+        agendamento_id: novoAgId || undefined,
+      } : null)
+    }
+  }
+
   async function atualizarStatus(id: string, novoStatus: string) {
     await supabase.from('planos_manutencao').update({ status: novoStatus }).eq('id', id)
     await carregarPlanos(empresaId!)
     if (planoSelecionado?.id === id) setPlanoSelecionado(prev => prev ? { ...prev, status: novoStatus } : null)
-  }
-
-  async function registrarAtendimento(plano: Plano) {
-    const hoje = new Date().toISOString().split('T')[0]
-    const proximo = calcularProximoAtendimento(hoje, plano.periodicidade)
-    await supabase.from('planos_manutencao').update({
-      ultimo_atendimento: hoje,
-      proximo_atendimento: proximo,
-    }).eq('id', plano.id)
-    await carregarPlanos(empresaId!)
-    if (planoSelecionado?.id === plano.id) {
-      setPlanoSelecionado(prev => prev ? { ...prev, ultimo_atendimento: hoje, proximo_atendimento: proximo } : null)
-    }
   }
 
   async function excluirPlano(id: string) {
@@ -219,7 +276,6 @@ export default function PlanosClient() {
         </button>
       </div>
 
-      {/* Alerta próximos */}
       {proximosHoje > 0 && (
         <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: 12, padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 20 }}>⏰</span>
@@ -229,7 +285,6 @@ export default function PlanosClient() {
         </div>
       )}
 
-      {/* Filtros */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
         {['todos', 'ativo', 'pausado', 'cancelado'].map(f => {
           const qtd = f === 'todos' ? planos.length : planos.filter(p => p.status === f).length
@@ -246,7 +301,7 @@ export default function PlanosClient() {
         <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' as const }}>
           <p style={{ fontSize: 36, marginBottom: 12 }}>💎</p>
           <p style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Nenhum plano cadastrado</p>
-          <p style={{ color: '#4A5568', fontSize: 13, marginBottom: 20 }}>Cadastre clientes com serviços recorrentes — lavagem semanal, quinzenal ou mensal.</p>
+          <p style={{ color: '#4A5568', fontSize: 13, marginBottom: 20 }}>Cadastre clientes com serviços recorrentes.</p>
           <button onClick={() => { limparForm(); setAba('novo') }}
             style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 24px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer' }}>
             + CRIAR PRIMEIRO PLANO
@@ -259,17 +314,13 @@ export default function PlanosClient() {
             const per = PERIODICIDADE[p.periodicidade]
             const diasRestantes = p.proximo_atendimento ? diasAteProximo(p.proximo_atendimento) : null
             const urgente = diasRestantes !== null && diasRestantes <= 2 && p.status === 'ativo'
-
             return (
               <div key={p.id} onClick={() => { setPlanoSelecionado(p); setAba('detalhe') }}
                 style={{ background: '#0D1220', border: `1px solid ${urgente ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 16, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'center' }}>
-
-                {/* Avatar */}
                 <div style={{ background: `${per?.cor}18`, border: `1px solid ${per?.cor}44`, borderRadius: 12, width: 52, height: 52, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <span style={{ fontSize: 20 }}>{per?.icon}</span>
                   <p style={{ color: per?.cor, fontSize: 9, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{per?.label.toUpperCase().slice(0,3)}</p>
                 </div>
-
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, margin: 0 }}>{p.cliente?.nome}</p>
@@ -280,16 +331,13 @@ export default function PlanosClient() {
                     {p.veiculo?.marca} {p.veiculo?.modelo} · {p.veiculo?.placa}
                     {p.hora_preferida && ` · ${p.hora_preferida.slice(0,5)}`}
                   </p>
-                  <p style={{ color: '#4A5568', fontSize: 11, margin: '4px 0 0' }}>
-                    {(p.servicos || []).join(' · ')}
-                  </p>
+                  <p style={{ color: '#4A5568', fontSize: 11, margin: '4px 0 0' }}>{(p.servicos || []).join(' · ')}</p>
                 </div>
-
                 <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
                   {p.valor_mensal && <p style={{ color: '#D4A843', fontSize: 15, fontWeight: 900, margin: '0 0 4px' }}>R$ {p.valor_mensal.toFixed(2).replace('.', ',')}<span style={{ color: '#4A5568', fontSize: 10 }}>/mês</span></p>}
                   {p.proximo_atendimento && (
                     <p style={{ color: diasRestantes !== null && diasRestantes <= 0 ? '#FC8181' : diasRestantes !== null && diasRestantes <= 2 ? '#D4A843' : '#4A5568', fontSize: 11, margin: 0, fontWeight: urgente ? 700 : 400 }}>
-                      {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado' : diasRestantes !== null && diasRestantes <= 2 ? `Em ${diasRestantes}d` : `Em ${diasRestantes}d`}
+                      {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado' : `Em ${diasRestantes}d`}
                     </p>
                   )}
                 </div>
@@ -310,6 +358,10 @@ export default function PlanosClient() {
           <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>Novo Plano de Manutenção</h1>
           <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
         </div>
+      </div>
+
+      <div style={{ background: 'rgba(144,205,244,0.06)', border: '1px solid rgba(144,205,244,0.2)', borderRadius: 10, padding: '10px 16px', marginBottom: 20, maxWidth: 760 }}>
+        <p style={{ color: '#90CDF4', fontSize: 13, margin: 0 }}>📅 O agendamento será criado automaticamente na Agenda para o próximo atendimento.</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 760 }}>
@@ -400,7 +452,7 @@ export default function PlanosClient() {
 
       <button onClick={salvarPlano} disabled={salvando}
         style={{ width: '100%', maxWidth: 760, background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: 16, borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: 'pointer', letterSpacing: 1, marginTop: 16 }}>
-        {salvando ? 'SALVANDO...' : 'CRIAR PLANO DE MANUTENÇÃO'}
+        {salvando ? 'SALVANDO...' : 'CRIAR PLANO E AGENDAR'}
       </button>
     </div>
   )
@@ -428,8 +480,6 @@ export default function PlanosClient() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-            {/* Dados */}
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DO PLANO</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
@@ -455,23 +505,17 @@ export default function PlanosClient() {
               )}
             </div>
 
-            {/* Serviços */}
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>SERVIÇOS INCLUSOS</p>
               <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
                 {(planoSelecionado.servicos || []).map((s, i) => (
-                  <span key={i} style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', color: '#D4A843', padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
-                    ✓ {s}
-                  </span>
+                  <span key={i} style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', color: '#D4A843', padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>✓ {s}</span>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Ações */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-            {/* Próximo atendimento */}
             <div style={{ background: diasRestantes !== null && diasRestantes <= 2 ? 'rgba(212,168,67,0.06)' : '#0D1220', border: `1px solid ${diasRestantes !== null && diasRestantes <= 2 ? 'rgba(212,168,67,0.25)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 20, textAlign: 'center' as const }}>
               <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>PRÓXIMO ATENDIMENTO</p>
               {planoSelecionado.proximo_atendimento ? (
@@ -480,13 +524,13 @@ export default function PlanosClient() {
                     {new Date(planoSelecionado.proximo_atendimento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}
                   </p>
                   <p style={{ color: diasRestantes !== null && diasRestantes <= 0 ? '#FC8181' : diasRestantes !== null && diasRestantes <= 2 ? '#D4A843' : '#4A5568', fontSize: 13, fontWeight: 700, margin: 0 }}>
-                    {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado!' : diasRestantes !== null && diasRestantes === 1 ? '⏰ Amanhã!' : diasRestantes !== null && diasRestantes === 0 ? '⏰ Hoje!' : `Em ${diasRestantes} dias`}
+                    {diasRestantes !== null && diasRestantes <= 0 ? '⚠️ Atrasado!' : diasRestantes === 1 ? '⏰ Amanhã!' : `Em ${diasRestantes} dias`}
                   </p>
+                  <p style={{ color: '#4A5568', fontSize: 11, margin: '6px 0 0' }}>✅ Agendado na Agenda</p>
                 </>
               ) : <p style={{ color: '#4A5568', fontSize: 14, margin: 0 }}>Não definido</p>}
             </div>
 
-            {/* Valor */}
             {planoSelecionado.valor_mensal && (
               <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16, textAlign: 'center' as const }}>
                 <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>VALOR MENSAL</p>
@@ -494,7 +538,6 @@ export default function PlanosClient() {
               </div>
             )}
 
-            {/* Registrar atendimento */}
             {planoSelecionado.status === 'ativo' && (
               <button onClick={() => registrarAtendimento(planoSelecionado)}
                 style={{ width: '100%', background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '12px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 900, letterSpacing: 1 }}>
@@ -502,15 +545,13 @@ export default function PlanosClient() {
               </button>
             )}
 
-            {/* Agendar na agenda */}
             {planoSelecionado.status === 'ativo' && (
               <button onClick={() => router.push('/agenda')}
                 style={{ width: '100%', background: 'rgba(144,205,244,0.1)', border: '1px solid rgba(144,205,244,0.2)', color: '#90CDF4', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
-                📅 IR PARA AGENDA
+                📅 VER NA AGENDA
               </button>
             )}
 
-            {/* Enviar lembrete WhatsApp */}
             {planoSelecionado.cliente?.telefone && (
               <button onClick={() => {
                 const tel = planoSelecionado.cliente.telefone.replace(/\D/g, '')
@@ -527,7 +568,6 @@ export default function PlanosClient() {
               </button>
             )}
 
-            {/* Status */}
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 14 }}>
               <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>ALTERAR STATUS</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
