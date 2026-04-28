@@ -305,7 +305,7 @@ export default function AgendaClient() {
                     const dStr = formatarDataLocal(dia)
                     const diaKey = DIAS_SEMANA[dia.getDay()]
                     const diaAtivo = diasFuncionamento.includes(diaKey)
-                    const ags = agendamentos.filter(a => a.data === dStr && a.hora === h)
+                    const ags = agendamentos.filter(a => a.data === dStr && a.hora.slice(0, 5) === h)
                     return (
                       <div key={di}
                         onClick={() => { if (diaAtivo && ags.length === 0) abrirModal(undefined, dStr, h) }}
