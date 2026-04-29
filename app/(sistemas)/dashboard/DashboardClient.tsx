@@ -56,14 +56,30 @@ export default function DashboardClient() {
     setOrcamentosNovos([])
   }
 
-  async function aprovarSolicitacao(id: string) {
-    await supabase.from('agendamentos').update({ status: 'confirmado', notificacao_lida: true }).eq('id', id)
-    setSolicitacoesNovas(prev => prev.filter(s => s.id !== id))
+  async function aprovarSolicitacao(s: any) {
+    await supabase.from('agendamentos').update({ status: 'confirmado', notificacao_lida: true }).eq('id', s.id)
+    setSolicitacoesNovas(prev => prev.filter(ag => ag.id !== s.id))
+
+    // Abre WhatsApp com confirmação para o cliente
+    if (s.solicitante_telefone) {
+      const tel = s.solicitante_telefone.replace(/\D/g, '')
+      const dataFormatada = new Date(s.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+      const msg = `Olá, ${s.solicitante_nome?.split(' ')[0]}! 👋\n\n✅ Seu agendamento foi *confirmado* por *${empresa?.nome}*!\n\n📅 *${dataFormatada}* às *${s.hora?.slice(0,5)}*\n🚗 Veículo: ${s.solicitante_veiculo}\n🛠️ Serviço: ${s.servico || 'A combinar'}\n\nAguardamos você! Qualquer dúvida, estamos à disposição. ✨`
+      window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+    }
   }
 
-  async function recusarSolicitacao(id: string) {
-    await supabase.from('agendamentos').update({ status: 'cancelado', notificacao_lida: true }).eq('id', id)
-    setSolicitacoesNovas(prev => prev.filter(s => s.id !== id))
+  async function recusarSolicitacao(s: any) {
+    await supabase.from('agendamentos').update({ status: 'cancelado', notificacao_lida: true }).eq('id', s.id)
+    setSolicitacoesNovas(prev => prev.filter(ag => ag.id !== s.id))
+
+    // Abre WhatsApp informando recusa
+    if (s.solicitante_telefone) {
+      const tel = s.solicitante_telefone.replace(/\D/g, '')
+      const dataFormatada = new Date(s.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+      const msg = `Olá, ${s.solicitante_nome?.split(' ')[0]}! 👋\n\nInfelizmente não conseguimos confirmar seu agendamento para *${dataFormatada}* às *${s.hora?.slice(0,5)}*.\n\nPor favor, entre em contato conosco para verificar outro horário disponível. 😊`
+      window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+    }
   }
 
   if (loading) return (
@@ -113,11 +129,11 @@ export default function DashboardClient() {
                     {s.observacoes && <p style={{ color: '#4A5568', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' }}>"{s.observacoes}"</p>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <button onClick={() => aprovarSolicitacao(s.id)}
+                    <button onClick={() => aprovarSolicitacao(s)}
                       style={{ background: 'rgba(72,187,120,0.1)', border: '1px solid rgba(72,187,120,0.3)', color: '#48BB78', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
                       ✅ APROVAR
                     </button>
-                    <button onClick={() => recusarSolicitacao(s.id)}
+                    <button onClick={() => recusarSolicitacao(s)}
                       style={{ background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.2)', color: '#FC8181', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
                       ❌ RECUSAR
                     </button>
