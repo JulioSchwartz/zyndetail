@@ -232,7 +232,14 @@ export default function OrdensClient() {
 
     if (registrarPagamento) {
       const valorBase = calcularValorOS(osParaFinalizar)
-      const valorFinal = parseFloat((valorRecebido || '0').replace(',', '.')) || valorBase
+      let valorFinal: number
+      if (formaPagamento === 'cartao_parcelado') {
+        // Total = nº parcelas × valor da parcela
+        valorFinal = parseInt(parcelas || '1') * (parseFloat((valorRecebido || '0').replace(',', '.')) || 0)
+        if (valorFinal <= 0) valorFinal = valorBase
+      } else {
+        valorFinal = parseFloat((valorRecebido || '0').replace(',', '.')) || valorBase
+      }
       await supabase.from('pagamentos_os').insert({
         empresa_id: empresaId,
         os_id: osParaFinalizar.id,
@@ -343,18 +350,27 @@ export default function OrdensClient() {
     if (!modalPagamento || !osParaFinalizar) return null
     const valor = calcularValorOS(osParaFinalizar)
     const ehPlano = !!osParaFinalizar.plano_id
+    const vReal = parseFloat((valorRecebido || '0').replace(',', '.')) || 0
+    const diff = vReal - valor
+    const temDiff = Math.abs(diff) > 0.01 && vReal > 0
+
     return (
       <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
         <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480 }}>
-          <div style={{ marginBottom: 20 }}>
+
+          {/* Cabeçalho com valor em destaque */}
+          <div style={{ marginBottom: 20, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 16 }}>
             <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 900, margin: '0 0 6px' }}>✅ Finalizar OS</h2>
-            <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>
+            <p style={{ color: '#4A5568', fontSize: 13, margin: '0 0 14px' }}>
               {osParaFinalizar.cliente?.nome} — {osParaFinalizar.veiculo?.marca} {osParaFinalizar.veiculo?.modelo} · {osParaFinalizar.veiculo?.placa}
             </p>
             {valor > 0 && (
-              <p style={{ color: '#D4A843', fontSize: 20, fontWeight: 900, margin: '10px 0 0' }}>
-                R$ {valor.toFixed(2).replace('.', ',')}
-              </p>
+              <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, margin: 0 }}>VALOR DA OS</p>
+                <p style={{ color: '#D4A843', fontSize: 26, fontWeight: 900, margin: 0, letterSpacing: 1 }}>
+                  R$ {valor.toFixed(2).replace('.', ',')}
+                </p>
+              </div>
             )}
           </div>
 
@@ -365,13 +381,17 @@ export default function OrdensClient() {
             </div>
           ) : (
             <div style={{ marginBottom: 20 }}>
+              {/* Forma de pagamento */}
               <label style={{ ...lbl, marginBottom: 10 }}>FORMA DE PAGAMENTO</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                 {FORMAS_PAGAMENTO.map(fp => (
                   <button key={fp.key} onClick={() => {
                     setFormaPagamento(fp.key)
                     if (fp.key !== 'cartao_parcelado') {
                       setValorRecebido(valor > 0 ? valor.toFixed(2).replace('.', ',') : '')
+                    } else {
+                      setValorRecebido('')
+                      setParcelas('2')
                     }
                   }}
                     style={{ background: formaPagamento === fp.key ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${formaPagamento === fp.key ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: formaPagamento === fp.key ? '#D4A843' : '#4A5568', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: formaPagamento === fp.key ? 700 : 400, textAlign: 'left' as const }}>
@@ -379,41 +399,82 @@ export default function OrdensClient() {
                   </button>
                 ))}
               </div>
+
+              {/* Cartão parcelado — campos manuais */}
               {formaPagamento === 'cartao_parcelado' && (
-                <div style={{ marginTop: 12 }}>
-                  <label style={lbl}>NÚMERO DE PARCELAS</label>
-                  <select style={inp} value={parcelas} onChange={e => setParcelas(e.target.value)}>
-                    {[2,3,4,5,6,7,8,9,10,11,12].map(n => (
-                      <option key={n} value={n}>{n}x de R$ {(valor / n).toFixed(2).replace('.', ',')} (sem juros)</option>
-                    ))}
-                  </select>
+                <div style={{ background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                  <p style={{ color: '#F97316', fontSize: 11, fontWeight: 700, letterSpacing: 1, margin: '0 0 12px' }}>DETALHES DO PARCELAMENTO</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={lbl}>Nº DE PARCELAS</label>
+                      <input
+                        style={inp}
+                        type="number"
+                        min="2"
+                        max="48"
+                        value={parcelas}
+                        onChange={e => setParcelas(e.target.value)}
+                        placeholder="Ex: 10"
+                      />
+                    </div>
+                    <div>
+                      <label style={lbl}>VALOR DA PARCELA (R$)</label>
+                      <div style={{ position: 'relative' as const }}>
+                        <span style={{ position: 'absolute' as const, left: 14, top: '50%', transform: 'translateY(-50%)', color: '#4A5568', fontSize: 14 }}>R$</span>
+                        <input
+                          style={{ ...inp, paddingLeft: 36 }}
+                          value={valorRecebido}
+                          onChange={e => setValorRecebido(e.target.value)}
+                          placeholder="Ex: 73,50"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Total calculado */}
+                  {parcelas && valorRecebido && parseFloat((valorRecebido || '0').replace(',', '.')) > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>Total a receber:</p>
+                      <p style={{ color: '#F97316', fontSize: 15, fontWeight: 900, margin: 0 }}>
+                        R$ {(parseInt(parcelas || '0') * parseFloat((valorRecebido || '0').replace(',', '.'))).toFixed(2).replace('.', ',')}
+                      </p>
+                    </div>
+                  )}
+                  {parcelas && valorRecebido && (() => {
+                    const totalParcelado = parseInt(parcelas || '0') * parseFloat((valorRecebido || '0').replace(',', '.'))
+                    const juros = totalParcelado - valor
+                    if (Math.abs(juros) < 0.01) return null
+                    return (
+                      <div style={{ marginTop: 6, padding: '5px 10px', borderRadius: 6, background: juros > 0 ? 'rgba(249,115,22,0.08)' : 'rgba(72,187,120,0.08)', border: `1px solid ${juros > 0 ? 'rgba(249,115,22,0.2)' : 'rgba(72,187,120,0.2)'}`, display: 'flex', justifyContent: 'space-between' }}>
+                        <p style={{ color: juros > 0 ? '#F97316' : '#48BB78', fontSize: 11, fontWeight: 700, margin: 0 }}>{juros > 0 ? '📈 Juros' : '📉 Desconto'}</p>
+                        <p style={{ color: juros > 0 ? '#F97316' : '#48BB78', fontSize: 11, fontWeight: 900, margin: 0 }}>{juros > 0 ? '+' : ''}R$ {Math.abs(juros).toFixed(2).replace('.', ',')}</p>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
-              {/* Valor recebido editável */}
-              <div style={{ marginTop: 12 }}>
-                <label style={lbl}>
-                  VALOR RECEBIDO
-                  {formaPagamento === 'cartao_parcelado'
-                    ? <span style={{ color: '#F97316', marginLeft: 6, fontSize: 10 }}>Informe o valor total com juros se houver</span>
-                    : <span style={{ color: '#4A5568', marginLeft: 6, fontSize: 10, fontWeight: 400 }}>Edite se houve desconto</span>}
-                </label>
-                <div style={{ position: 'relative' as const }}>
-                  <span style={{ position: 'absolute' as const, left: 14, top: '50%', transform: 'translateY(-50%)', color: '#4A5568', fontSize: 14 }}>R$</span>
-                  <input style={{ ...inp, paddingLeft: 36 }} value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} placeholder={valor > 0 ? valor.toFixed(2).replace('.', ',') : '0,00'} inputMode="decimal" />
-                </div>
-                {(() => {
-                  const vReal = parseFloat((valorRecebido || '0').replace(',', '.')) || 0
-                  const diff = vReal - valor
-                  if (Math.abs(diff) < 0.01 || vReal === 0) return null
-                  return (
+
+              {/* Valor recebido — apenas para não parcelado */}
+              {formaPagamento !== 'cartao_parcelado' && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={lbl}>
+                    VALOR RECEBIDO
+                    <span style={{ color: '#4A5568', marginLeft: 6, fontSize: 10, fontWeight: 400 }}>Edite se houve desconto</span>
+                  </label>
+                  <div style={{ position: 'relative' as const }}>
+                    <span style={{ position: 'absolute' as const, left: 14, top: '50%', transform: 'translateY(-50%)', color: '#4A5568', fontSize: 14 }}>R$</span>
+                    <input style={{ ...inp, paddingLeft: 36 }} value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} placeholder={valor > 0 ? valor.toFixed(2).replace('.', ',') : '0,00'} inputMode="decimal" />
+                  </div>
+                  {temDiff && (
                     <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: diff > 0 ? 'rgba(249,115,22,0.08)' : 'rgba(72,187,120,0.08)', border: `1px solid ${diff > 0 ? 'rgba(249,115,22,0.2)' : 'rgba(72,187,120,0.2)'}`, display: 'flex', justifyContent: 'space-between' }}>
-                      <p style={{ color: diff > 0 ? '#F97316' : '#48BB78', fontSize: 12, fontWeight: 700, margin: 0 }}>{diff > 0 ? '📈 Acréscimo (juros)' : '📉 Desconto concedido'}</p>
+                      <p style={{ color: diff > 0 ? '#F97316' : '#48BB78', fontSize: 12, fontWeight: 700, margin: 0 }}>{diff > 0 ? '📈 Acréscimo' : '📉 Desconto concedido'}</p>
                       <p style={{ color: diff > 0 ? '#F97316' : '#48BB78', fontSize: 12, fontWeight: 900, margin: 0 }}>{diff > 0 ? '+' : ''}R$ {Math.abs(diff).toFixed(2).replace('.', ',')}</p>
                     </div>
-                  )
-                })()}
-              </div>
-              <div style={{ marginTop: 12 }}>
+                  )}
+                </div>
+              )}
+
+              <div>
                 <label style={lbl}>OBSERVAÇÕES (opcional)</label>
                 <input style={inp} value={obsPagamento} onChange={e => setObsPagamento(e.target.value)} placeholder="Ex: Pago no ato, cliente solicitou recibo..." />
               </div>
