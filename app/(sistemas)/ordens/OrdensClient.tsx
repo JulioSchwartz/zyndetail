@@ -38,6 +38,7 @@ type OsItem = {
   descricao: string
   status: 'pendente' | 'em_andamento' | 'concluido'
   observacao?: string
+  valor?: number
 }
 
 type Aba = 'lista' | 'nova' | 'detalhe'
@@ -59,6 +60,13 @@ const ETAPAS: { key: 'recebimento' | 'andamento' | 'finalizado', label: string, 
   { key: 'andamento',   label: 'Andamento',   icon: '🔧' },
   { key: 'finalizado',  label: 'Finalizado',  icon: '✅' },
 ]
+
+function calcularValorOS(os: OS): number {
+  if (os.orcamento_id && os.orcamento?.valor_total) {
+    return os.orcamento.valor_total
+  }
+  return (os.itens || []).reduce((acc, item) => acc + (item.valor || 0), 0)
+}
 
 export default function OrdensClient() {
   const router = useRouter()
@@ -149,11 +157,24 @@ export default function OrdensClient() {
     if (error || !os) { setErro('Erro ao abrir OS.'); setSalvando(false); return }
 
     // Cria itens — do orçamento ou selecionados manualmente
+    // Para OS diretas: salva o valor do catálogo em os_itens.valor
     const itensParaInserir = tipoAbertura === 'orcamento'
-      ? itensOrcamento.map((i: any) => ({ os_id: os.id, empresa_id: empresaId, descricao: i.descricao, status: 'pendente' }))
+      ? itensOrcamento.map((i: any) => ({
+          os_id: os.id,
+          empresa_id: empresaId,
+          descricao: i.descricao,
+          status: 'pendente',
+          valor: i.valor || 0,
+        }))
       : itensSelecionados.map(sid => {
           const serv = servicos.find(s => s.id === sid)
-          return { os_id: os.id, empresa_id: empresaId, descricao: serv?.nome || sid, status: 'pendente' }
+          return {
+            os_id: os.id,
+            empresa_id: empresaId,
+            descricao: serv?.nome || sid,
+            status: 'pendente',
+            valor: serv?.preco || 0,
+          }
         })
 
     if (itensParaInserir.length > 0) {
@@ -278,69 +299,75 @@ export default function OrdensClient() {
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }
 
   // ── LISTA ──
-  if (aba === 'lista') return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>🔧 Ordens de Serviço</h1>
-          <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', margin: '8px 0' }} />
-          <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>{ordens.length} ordens cadastradas</p>
+  if (aba === 'lista') {
+    const contadores = { todos: ordens.length, aberta: ordens.filter(o => o.status === 'aberta').length, em_andamento: ordens.filter(o => o.status === 'em_andamento').length, finalizada: ordens.filter(o => o.status === 'finalizada').length }
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>🔧 Ordens de Serviço</h1>
+            <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
+            <p style={{ color: '#4A5568', fontSize: 12, marginTop: 4 }}>{ordens.length} ordens cadastradas</p>
+          </div>
+          <button onClick={() => { setAba('nova'); limparFormNova() }}
+            style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 10, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
+            + NOVA OS
+          </button>
         </div>
-        <button onClick={() => { limparFormNova(); setAba('nova') }}
-          style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '10px 20px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', letterSpacing: 1 }}>
-          + NOVA OS
-        </button>
-      </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
-        {['todos', 'aberta', 'em_andamento', 'finalizada'].map(f => {
-          const qtd = f === 'todos' ? ordens.length : ordens.filter(o => o.status === f).length
-          const st = STATUS_CONFIG[f]
-          return (
-            <button key={f} onClick={() => setFiltro(f)}
-              style={{ background: filtro === f ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${filtro === f ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: filtro === f ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: filtro === f ? 700 : 400 }}>
-              {f === 'todos' ? `Todos (${qtd})` : `${st?.label} (${qtd})`}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
+          {[
+            { key: 'todos',       label: `Todos (${contadores.todos})` },
+            { key: 'aberta',      label: `ABERTA (${contadores.aberta})` },
+            { key: 'em_andamento', label: `EM ANDAMENTO (${contadores.em_andamento})` },
+            { key: 'finalizada',  label: `FINALIZADA (${contadores.finalizada})` },
+          ].map(f => (
+            <button key={f.key} onClick={() => setFiltro(f.key)}
+              style={{ background: filtro === f.key ? 'rgba(212,168,67,0.15)' : 'transparent', border: `1px solid ${filtro === f.key ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: filtro === f.key ? '#D4A843' : '#4A5568', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: filtro === f.key ? 700 : 400 }}>
+              {f.label}
             </button>
-          )
-        })}
-      </div>
-
-      {ordensFiltradas.length === 0 ? (
-        <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
-          <p style={{ fontSize: 32, marginBottom: 12 }}>🔧</p>
-          <p style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Nenhuma OS encontrada</p>
-          <p style={{ color: '#4A5568', fontSize: 13 }}>Abra a primeira ordem de serviço.</p>
+          ))}
         </div>
-      ) : (
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {ordensFiltradas.map(o => {
-            const st = STATUS_CONFIG[o.status]
-            const itens = o.itens || []
-            const concluidos = itens.filter((i: OsItem) => i.status === 'concluido').length
+          {ordensFiltradas.map(os => {
+            const st = STATUS_CONFIG[os.status]
+            const valor = calcularValorOS(os)
             return (
-              <div key={o.id} onClick={() => abrirDetalhe(o.id)}
-                style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div key={os.id} onClick={() => abrirDetalhe(os.id)}
+                style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, transition: 'border-color 0.2s' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, margin: 0 }}>{o.cliente?.nome || '—'}</p>
-                    <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, border: `1px solid ${st.cor}33` }}>{st.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                    <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0 }}>{os.cliente?.nome}</p>
+                    <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 700, border: `1px solid ${st.cor}33` }}>{st.label}</span>
                   </div>
                   <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
-                    {o.veiculo?.marca} {o.veiculo?.modelo} · {o.veiculo?.placa}
-                    {itens.length > 0 && ` · ${concluidos}/${itens.length} serviços`}
+                    {os.veiculo?.marca} {os.veiculo?.modelo} · {os.veiculo?.placa}
+                    {os.itens && os.itens.length > 0 && ` · ${os.itens.filter(i => i.status === 'concluido').length}/${os.itens.length} serviços`}
                   </p>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ color: '#4A5568', fontSize: 11, margin: '0 0 4px' }}>{new Date(o.criado_em).toLocaleDateString('pt-BR')}</p>
-                  <p style={{ color: '#4A5568', fontSize: 11, margin: 0 }}>{(o.fotos || []).length} foto(s)</p>
+                <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                  {valor > 0 && (
+                    <p style={{ color: '#D4A843', fontSize: 13, fontWeight: 700, margin: '0 0 4px' }}>
+                      R$ {valor.toFixed(2).replace('.', ',')}
+                    </p>
+                  )}
+                  <p style={{ color: '#4A5568', fontSize: 11, margin: 0 }}>{new Date(os.criado_em).toLocaleDateString('pt-BR')}</p>
+                  <p style={{ color: '#4A5568', fontSize: 11, margin: '2px 0 0' }}>{(os.fotos || []).length} foto(s)</p>
                 </div>
               </div>
             )
           })}
+          {ordensFiltradas.length === 0 && (
+            <div style={{ textAlign: 'center' as const, padding: '40px 0', color: '#4A5568' }}>
+              <p style={{ fontSize: 28, margin: '0 0 8px' }}>🔧</p>
+              <p style={{ fontSize: 14 }}>Nenhuma OS encontrada</p>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  )
+      </div>
+    )
+  }
 
   // ── NOVA OS ──
   if (aba === 'nova') return (
@@ -353,17 +380,19 @@ export default function OrdensClient() {
         </div>
       </div>
 
-      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 24, maxWidth: 640 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>ORIGEM DA OS</p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button onClick={() => setTipoAbertura('orcamento')}
-            style={{ flex: 1, background: tipoAbertura === 'orcamento' ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${tipoAbertura === 'orcamento' ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: tipoAbertura === 'orcamento' ? '#D4A843' : '#4A5568', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-            📋 A partir de orçamento
-          </button>
-          <button onClick={() => setTipoAbertura('direto')}
-            style={{ flex: 1, background: tipoAbertura === 'direto' ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${tipoAbertura === 'direto' ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: tipoAbertura === 'direto' ? '#D4A843' : '#4A5568', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-            🔧 Abrir diretamente
-          </button>
+      <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 24, maxWidth: 600 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14 }}>ORIGEM DA OS</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          {[
+            { key: 'orcamento', label: '📋 A partir de orçamento' },
+            { key: 'direto',    label: '🔧 Abrir diretamente' },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setTipoAbertura(opt.key as any)}
+              style={{ background: tipoAbertura === opt.key ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${tipoAbertura === opt.key ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: tipoAbertura === opt.key ? '#D4A843' : '#4A5568', padding: '12px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: tipoAbertura === opt.key ? 700 : 400 }}>
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         {tipoAbertura === 'orcamento' ? (
@@ -372,16 +401,20 @@ export default function OrdensClient() {
             <select style={inp} value={orcamentoId} onChange={e => setOrcamentoId(e.target.value)}>
               <option value="">Selecione um orçamento...</option>
               {orcamentosAprovados.map(o => (
-                <option key={o.id} value={o.id}>#{o.token} — {o.cliente?.nome} — {o.veiculo?.placa} — R$ {o.valor_total?.toFixed(2).replace('.', ',')}</option>
+                <option key={o.id} value={o.id}>#{o.token} — {o.cliente?.nome} — R$ {o.valor_total?.toFixed(2).replace('.', ',')}</option>
               ))}
             </select>
-            {orcamentosAprovados.length === 0 && <p style={{ color: '#FC8181', fontSize: 12, marginTop: 6 }}>Nenhum orçamento aprovado disponível.</p>}
             {orcamentoId && (() => {
               const orc = orcamentosAprovados.find(o => o.id === orcamentoId)
               return orc?.itens?.length > 0 ? (
                 <div style={{ background: '#080C18', border: '1px solid rgba(212,168,67,0.15)', borderRadius: 8, padding: 12, marginTop: 10 }}>
                   <p style={{ color: '#D4A843', fontSize: 11, fontWeight: 700, letterSpacing: 1, margin: '0 0 8px' }}>SERVIÇOS DO ORÇAMENTO</p>
-                  {orc.itens.map((i: any) => <p key={i.id} style={{ color: '#CBD5E0', fontSize: 13, margin: '0 0 4px' }}>• {i.descricao}</p>)}
+                  {orc.itens.map((i: any) => (
+                    <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <p style={{ color: '#CBD5E0', fontSize: 13, margin: 0 }}>• {i.descricao}</p>
+                      {i.valor > 0 && <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>R$ {i.valor?.toFixed(2).replace('.', ',')}</p>}
+                    </div>
+                  ))}
                 </div>
               ) : null
             })()}
@@ -421,6 +454,14 @@ export default function OrdensClient() {
                 })}
                 {servicos.length === 0 && <p style={{ color: '#4A5568', fontSize: 13 }}>Nenhum serviço cadastrado no catálogo.</p>}
               </div>
+              {itensSelecionados.length > 0 && (
+                <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.15)', borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <p style={{ color: '#D4A843', fontSize: 12, fontWeight: 700, margin: 0 }}>{itensSelecionados.length} serviço(s) selecionado(s)</p>
+                  <p style={{ color: '#D4A843', fontSize: 12, fontWeight: 900, margin: 0 }}>
+                    Total: R$ {itensSelecionados.reduce((acc, sid) => acc + (servicos.find(s => s.id === sid)?.preco || 0), 0).toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -445,6 +486,8 @@ export default function OrdensClient() {
     const st = STATUS_CONFIG[osSelecionada.status]
     const itens = osSelecionada.itens || []
     const concluidos = itens.filter(i => i.status === 'concluido').length
+    const valorTotal = calcularValorOS(osSelecionada)
+    const temOrcamento = !!osSelecionada.orcamento_id
 
     return (
       <div>
@@ -497,15 +540,23 @@ export default function OrdensClient() {
                   {itens.map(item => {
                     const ist = ITEM_STATUS[item.status]
                     return (
-                      <div key={item.id} onClick={() => toggleItemStatus(item)}
-                        style={{ background: ist.bg, border: `1px solid ${ist.cor}33`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'all 0.2s' }}>
+                      <div key={item.id} onClick={() => osSelecionada.status !== 'finalizada' && toggleItemStatus(item)}
+                        style={{ background: ist.bg, border: `1px solid ${ist.cor}33`, borderRadius: 10, padding: '12px 16px', cursor: osSelecionada.status !== 'finalizada' ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'all 0.2s' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ fontSize: 18 }}>
                             {item.status === 'concluido' ? '✅' : item.status === 'em_andamento' ? '🔧' : '⏳'}
                           </span>
-                          <p style={{ color: item.status === 'concluido' ? '#48BB78' : '#fff', fontSize: 14, fontWeight: item.status === 'concluido' ? 700 : 400, margin: 0, textDecoration: item.status === 'concluido' ? 'line-through' : 'none' }}>
-                            {item.descricao}
-                          </p>
+                          <div>
+                            <p style={{ color: item.status === 'concluido' ? '#48BB78' : '#fff', fontSize: 14, fontWeight: item.status === 'concluido' ? 700 : 400, margin: 0, textDecoration: item.status === 'concluido' ? 'line-through' : 'none' }}>
+                              {item.descricao}
+                            </p>
+                            {/* Valor do item — só para OS sem orçamento */}
+                            {!temOrcamento && item.valor != null && item.valor > 0 && (
+                              <p style={{ color: '#4A5568', fontSize: 11, margin: '2px 0 0' }}>
+                                R$ {item.valor.toFixed(2).replace('.', ',')}
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <span style={{ background: ist.bg, color: ist.cor, fontSize: 10, padding: '3px 10px', borderRadius: 10, fontWeight: 700, border: `1px solid ${ist.cor}33`, whiteSpace: 'nowrap' as const }}>
                           {ist.label}
@@ -514,7 +565,17 @@ export default function OrdensClient() {
                     )
                   })}
                 </div>
-                <p style={{ color: '#4A5568', fontSize: 11, marginTop: 10, textAlign: 'center' as const }}>Clique em um serviço para atualizar o status</p>
+                {osSelecionada.status !== 'finalizada' && (
+                  <p style={{ color: '#4A5568', fontSize: 11, marginTop: 10, textAlign: 'center' as const }}>Clique em um serviço para atualizar o status</p>
+                )}
+
+                {/* Total da OS sem orçamento */}
+                {!temOrcamento && valorTotal > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(212,168,67,0.1)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+                    <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>TOTAL DA OS</p>
+                    <p style={{ color: '#D4A843', fontSize: 18, fontWeight: 900, margin: 0 }}>R$ {valorTotal.toFixed(2).replace('.', ',')}</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -559,7 +620,7 @@ export default function OrdensClient() {
               )}
 
               {fotosEtapa.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: '#4A5568', fontSize: 13 }}>Nenhuma foto nesta etapa</div>
+                <div style={{ textAlign: 'center' as const, padding: '24px 0', color: '#4A5568', fontSize: 13 }}>Nenhuma foto nesta etapa</div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
                   {fotosEtapa.map(foto => (
@@ -608,6 +669,32 @@ export default function OrdensClient() {
               )}
             </div>
 
+            {/* Resumo financeiro */}
+            {valorTotal > 0 && (
+              <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 12, padding: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 12 }}>VALOR DA OS</p>
+                {temOrcamento ? (
+                  <div>
+                    <p style={{ color: '#4A5568', fontSize: 11, margin: '0 0 4px' }}>Orçamento #{osSelecionada.orcamento?.token}</p>
+                    <p style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: 0 }}>R$ {valorTotal.toFixed(2).replace('.', ',')}</p>
+                  </div>
+                ) : (
+                  <div>
+                    {itens.map(item => item.valor != null && item.valor > 0 ? (
+                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <p style={{ color: '#CBD5E0', fontSize: 12, margin: 0 }}>{item.descricao}</p>
+                        <p style={{ color: '#CBD5E0', fontSize: 12, fontWeight: 700, margin: 0 }}>R$ {item.valor.toFixed(2).replace('.', ',')}</p>
+                      </div>
+                    ) : null)}
+                    <div style={{ borderTop: '1px solid rgba(212,168,67,0.15)', paddingTop: 8, marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
+                      <p style={{ color: '#D4A843', fontSize: 12, fontWeight: 700, margin: 0 }}>TOTAL</p>
+                      <p style={{ color: '#D4A843', fontSize: 18, fontWeight: 900, margin: 0 }}>R$ {valorTotal.toFixed(2).replace('.', ',')}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Link público */}
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 12 }}>LINK DO CLIENTE</p>
@@ -639,14 +726,6 @@ export default function OrdensClient() {
                 )
               })}
             </div>
-
-            {osSelecionada.orcamento && (
-              <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', letterSpacing: 2, marginBottom: 10 }}>ORÇAMENTO VINCULADO</p>
-                <p style={{ color: '#D4A843', fontSize: 13, fontWeight: 700, margin: '0 0 4px' }}>#{osSelecionada.orcamento.token}</p>
-                <p style={{ color: '#fff', fontSize: 16, fontWeight: 900, margin: 0 }}>R$ {osSelecionada.orcamento.valor_total?.toFixed(2).replace('.', ',')}</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
