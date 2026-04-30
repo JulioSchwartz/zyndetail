@@ -55,7 +55,7 @@ const FORMAS_PAGAMENTO: { key: FormaPagamento, label: string, icon: string }[] =
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
   aberta:       { label: 'ABERTA',       cor: '#90CDF4', bg: 'rgba(144,205,244,0.1)' },
-  em_andamento: { label: 'EM ANDAMENTO', cor: '#D4A843', bg: 'rgba(212,168,67,0.1)' },
+  em_andamento: { label: 'EM EXECUÇÃO',  cor: '#D4A843', bg: 'rgba(212,168,67,0.1)' },
   finalizada:   { label: 'FINALIZADA',   cor: '#48BB78', bg: 'rgba(72,187,120,0.1)' },
 }
 
@@ -505,7 +505,7 @@ export default function OrdensClient() {
             {[
               { key: 'todos',        label: `Todos (${contadores.todos})` },
               { key: 'aberta',       label: `ABERTA (${contadores.aberta})` },
-              { key: 'em_andamento', label: `EM ANDAMENTO (${contadores.em_andamento})` },
+              { key: 'em_andamento', label: `EM EXECUÇÃO (${contadores.em_andamento})` },
               { key: 'finalizada',   label: `FINALIZADA (${contadores.finalizada})` },
             ].map(f => (
               <button key={f.key} onClick={() => setFiltro(f.key)}
@@ -744,6 +744,22 @@ export default function OrdensClient() {
                     })}
                   </div>
                   {osSelecionada.status !== 'finalizada' && <p style={{ color: '#4A5568', fontSize: 11, marginTop: 10, textAlign: 'center' as const }}>Clique em um serviço para atualizar o status</p>}
+
+                  {/* Banner: todos serviços concluídos — sugerir finalizar */}
+                  {osSelecionada.status !== 'finalizada' && itens.length > 0 && concluidos === itens.length && (
+                    <div style={{ marginTop: 14, background: 'linear-gradient(135deg, rgba(72,187,120,0.12), rgba(212,168,67,0.08))', border: '1px solid rgba(72,187,120,0.35)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <p style={{ color: '#48BB78', fontSize: 13, fontWeight: 900, margin: '0 0 3px' }}>🎉 Todos os serviços concluídos!</p>
+                        <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>Registre o recebimento e feche a OS.</p>
+                      </div>
+                      <button
+                        onClick={() => abrirModalPagamento(osSelecionada)}
+                        style={{ background: 'linear-gradient(135deg, #48BB78, #38A169)', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: 10, fontWeight: 900, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const, letterSpacing: 0.5 }}>
+                        💰 Recebimento e Fechar OS
+                      </button>
+                    </div>
+                  )}
+
                   {!temOrcamento && valorTotal > 0 && (
                     <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(212,168,67,0.1)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
                       <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>TOTAL DA OS</p>
@@ -812,8 +828,14 @@ export default function OrdensClient() {
                     🔧 INICIAR SERVIÇO
                   </button>
                 )}
-                {osSelecionada.status === 'em_andamento' && (
-                  <button onClick={() => atualizarStatus(osSelecionada.id, 'finalizada')}
+                {osSelecionada.status === 'em_andamento' && itens.length > 0 && concluidos === itens.length && (
+                  <button onClick={() => abrirModalPagamento(osSelecionada)}
+                    style={{ width: '100%', background: 'linear-gradient(135deg, #48BB78, #38A169)', border: 'none', color: '#fff', padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 900, marginBottom: 8, letterSpacing: 0.5 }}>
+                    💰 RECEBIMENTO E FECHAR OS
+                  </button>
+                )}
+                {osSelecionada.status === 'em_andamento' && !(itens.length > 0 && concluidos === itens.length) && (
+                  <button onClick={() => abrirModalPagamento(osSelecionada)}
                     style={{ width: '100%', background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '12px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 900, marginBottom: 8, letterSpacing: 1 }}>
                     ✅ FINALIZAR OS
                   </button>
