@@ -3,25 +3,6 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-type OS = {
-  id: string
-  empresa_id: string
-  cliente_id: string
-  veiculo_id: string
-  orcamento_id?: string
-  status: 'aberta' | 'em_andamento' | 'finalizada'
-  observacoes?: string
-  criado_em: string
-  finalizado_em?: string
-  notificacao_lida: boolean
-  token: string
-  cliente?: any
-  veiculo?: any
-  orcamento?: any
-  fotos?: Foto[]
-  itens?: OsItem[]
-}
-
 type Foto = {
   id: string
   os_id: string
