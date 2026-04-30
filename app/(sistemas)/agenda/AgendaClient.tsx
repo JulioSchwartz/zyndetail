@@ -100,6 +100,7 @@ export default function AgendaClient() {
   const [servicoNome, setServicoNome] = useState('')
   const [status, setStatus] = useState('agendado')
   const [observacoes, setObservacoes] = useState('')
+  const [gerandoOS, setGerandoOS] = useState<string | null>(null) // id do agendamento sendo processado
 
   useEffect(() => {
     async function init() {
@@ -199,6 +200,76 @@ export default function AgendaClient() {
   }
 
   function fecharModal() { setModalAberto(false); setAgendamentoSelecionado(null); setErro('') }
+
+  async function gerarOSDoAgendamento(ag: Agendamento, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!ag.cliente_id || !ag.veiculo_id) {
+      alert('Este agendamento precisa ter cliente e veículo vinculados para gerar uma OS.')
+      return
+    }
+    if (!confirm(`Gerar OS para ${ag.cliente?.nome} — ${ag.veiculo?.marca} ${ag.veiculo?.modelo}?`)) return
+
+    setGerandoOS(ag.id)
+
+    // Buscar plano ativo do veículo se houver
+    const { data: plano } = await supabase
+      .from('planos_manutencao')
+      .select('id')
+      .eq('empresa_id', empresaId!)
+      .eq('veiculo_id', ag.veiculo_id)
+      .eq('status', 'ativo')
+      .maybeSingle()
+
+    // Criar OS
+    const { data: os, error } = await supabase.from('ordens_servico').insert({
+      empresa_id: empresaId,
+      cliente_id: ag.cliente_id,
+      veiculo_id: ag.veiculo_id,
+      plano_id: plano?.id || null,
+      status: 'aberta',
+      observacoes: ag.servico ? `Agendamento: ${ag.servico}` : (ag.titulo ? `Agendamento: ${ag.titulo}` : null),
+      notificacao_lida: false,
+    }).select().single()
+
+    if (error || !os) { setGerandoOS(null); alert('Erro ao gerar OS.'); return }
+
+    // Criar itens da OS com base no serviço do agendamento (se existir no catálogo)
+    if (ag.servico) {
+      const { data: servCatalogo } = await supabase
+        .from('servicos_catalogo')
+        .select('id, nome, preco')
+        .eq('empresa_id', empresaId!)
+        .eq('nome', ag.servico)
+        .maybeSingle()
+
+      if (servCatalogo) {
+        await supabase.from('os_itens').insert({
+          os_id: os.id,
+          empresa_id: empresaId,
+          descricao: servCatalogo.nome,
+          status: 'pendente',
+          valor: servCatalogo.preco || 0,
+        })
+      } else {
+        // Serviço não está no catálogo — cria item sem valor
+        await supabase.from('os_itens').insert({
+          os_id: os.id,
+          empresa_id: empresaId,
+          descricao: ag.servico,
+          status: 'pendente',
+          valor: 0,
+        })
+      }
+    }
+
+    // Marcar agendamento como confirmado se ainda não estiver
+    if (ag.status === 'agendado' || ag.status === 'pendente') {
+      await supabase.from('agendamentos').update({ status: 'confirmado' }).eq('id', ag.id)
+    }
+
+    setGerandoOS(null)
+    router.push('/ordens')
+  }
 
   const diasSemana = getDiasSemana(semanaBase)
   const veiculosCliente = clientes.find(c => c.id === clienteId)?.veiculos || []
@@ -318,12 +389,26 @@ export default function AgendaClient() {
                         const altura = Math.max(((ag.duracao_minutos || 60) / 30) * SLOT_HEIGHT - 4, SLOT_HEIGHT - 4)
                         const st = STATUS_CONFIG[ag.status] || STATUS_CONFIG.agendado
                         const label = ag.titulo || ag.servico || ag.cliente?.nome || 'Agendamento'
+                        const podeGerarOS = !!ag.cliente_id && !!ag.veiculo_id && ag.status !== 'cancelado' && ag.status !== 'concluido'
                         return (
-                          <div key={ag.id} onClick={e => { e.stopPropagation(); abrirModal(ag) }}
-                            style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', zIndex: 1 }}>
-                            <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
-                            {ag.cliente && altura > 40 && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
-                            {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {formatarDuracao(ag.duracao_minutos)}</p>}
+                          <div key={ag.id}
+                            style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', overflow: 'hidden', zIndex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', height: '100%' }}>
+                              <div style={{ flex: 1, overflow: 'hidden', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); abrirModal(ag) }}>
+                                <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
+                                {ag.cliente && altura > 40 && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
+                                {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {formatarDuracao(ag.duracao_minutos)}</p>}
+                              </div>
+                              {podeGerarOS && altura > 36 && (
+                                <button
+                                  onClick={e => gerarOSDoAgendamento(ag, e)}
+                                  disabled={gerandoOS === ag.id}
+                                  title="Gerar OS"
+                                  style={{ background: 'rgba(212,168,67,0.2)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: 4, padding: '2px 5px', cursor: 'pointer', fontSize: 10, fontWeight: 900, flexShrink: 0, marginLeft: 4, lineHeight: 1.4 }}>
+                                  {gerandoOS === ag.id ? '…' : '🔧'}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -359,14 +444,17 @@ export default function AgendaClient() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {agendamentosFiltrados.map(ag => {
                 const st = STATUS_CONFIG[ag.status] || STATUS_CONFIG.agendado
+                const podeGerarOS = !!ag.cliente_id && !!ag.veiculo_id && ag.status !== 'cancelado' && ag.status !== 'concluido'
                 return (
-                  <div key={ag.id} onClick={() => abrirModal(ag)}
-                    style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' as const, flexShrink: 0, minWidth: 60 }}>
+                  <div key={ag.id}
+                    style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    {/* Hora */}
+                    <div onClick={() => abrirModal(ag)} style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' as const, flexShrink: 0, minWidth: 60, cursor: 'pointer' }}>
                       <p style={{ color: '#D4A843', fontSize: 14, fontWeight: 900, margin: 0 }}>{ag.hora.slice(0,5)}</p>
                       <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0' }}>{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</p>
                     </div>
-                    <div style={{ flex: 1 }}>
+                    {/* Info */}
+                    <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => abrirModal(ag)}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, margin: 0 }}>{ag.titulo || ag.servico || 'Agendamento'}</p>
                         <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
@@ -375,6 +463,16 @@ export default function AgendaClient() {
                         {ag.cliente?.nome || 'Sem cliente'}{ag.veiculo && ` · ${ag.veiculo.placa}`} · {formatarDuracao(ag.duracao_minutos || 60)}
                       </p>
                     </div>
+                    {/* Botão Gerar OS */}
+                    {podeGerarOS && (
+                      <button
+                        onClick={e => gerarOSDoAgendamento(ag, e)}
+                        disabled={gerandoOS === ag.id}
+                        title="Gerar OS a partir deste agendamento"
+                        style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' as const, opacity: gerandoOS === ag.id ? 0.6 : 1 }}>
+                        {gerandoOS === ag.id ? '...' : '🔧 Gerar OS'}
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -493,6 +591,17 @@ export default function AgendaClient() {
                 </button>
               )}
             </div>
+
+            {/* Botão Gerar OS — aparece apenas ao editar agendamento com cliente+veículo */}
+            {agendamentoSelecionado && agendamentoSelecionado.cliente_id && agendamentoSelecionado.veiculo_id &&
+             agendamentoSelecionado.status !== 'cancelado' && agendamentoSelecionado.status !== 'concluido' && (
+              <button
+                onClick={e => gerarOSDoAgendamento(agendamentoSelecionado, e)}
+                disabled={gerandoOS === agendamentoSelecionado.id}
+                style={{ width: '100%', marginTop: 10, background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', color: '#D4A843', padding: '11px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
+                {gerandoOS === agendamentoSelecionado.id ? 'GERANDO OS...' : '🔧 GERAR OS A PARTIR DESTE AGENDAMENTO'}
+              </button>
+            )}
           </div>
         </div>
       )}
