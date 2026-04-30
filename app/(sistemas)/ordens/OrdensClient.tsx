@@ -102,6 +102,7 @@ export default function OrdensClient() {
   const [osParaFinalizar, setOsParaFinalizar] = useState<OS | null>(null)
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('pix')
   const [parcelas, setParcelas] = useState('2')
+  const [valorRecebido, setValorRecebido] = useState('')
   const [obsPagamento, setObsPagamento] = useState('')
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
 
@@ -207,9 +208,11 @@ export default function OrdensClient() {
 
   // Ao clicar em "Finalizar OS" — abre modal de pagamento
   function abrirModalPagamento(os: OS) {
+    const valor = calcularValorOS(os)
     setOsParaFinalizar(os)
     setFormaPagamento('pix')
     setParcelas('2')
+    setValorRecebido(valor > 0 ? valor.toFixed(2).replace('.', ',') : '')
     setObsPagamento('')
     setModalPagamento(true)
   }
@@ -228,13 +231,14 @@ export default function OrdensClient() {
     }).eq('id', osParaFinalizar.id)
 
     if (registrarPagamento) {
-      const valor = calcularValorOS(osParaFinalizar)
+      const valorBase = calcularValorOS(osParaFinalizar)
+      const valorFinal = parseFloat((valorRecebido || '0').replace(',', '.')) || valorBase
       await supabase.from('pagamentos_os').insert({
         empresa_id: empresaId,
         os_id: osParaFinalizar.id,
         forma: formaPagamento,
         parcelas: formaPagamento === 'cartao_parcelado' ? parseInt(parcelas) : null,
-        valor,
+        valor: valorFinal,
         recebido_em: finalizadoEm,
         observacoes: obsPagamento.trim() || null,
         status: 'recebido',
@@ -364,7 +368,12 @@ export default function OrdensClient() {
               <label style={{ ...lbl, marginBottom: 10 }}>FORMA DE PAGAMENTO</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {FORMAS_PAGAMENTO.map(fp => (
-                  <button key={fp.key} onClick={() => setFormaPagamento(fp.key)}
+                  <button key={fp.key} onClick={() => {
+                    setFormaPagamento(fp.key)
+                    if (fp.key !== 'cartao_parcelado') {
+                      setValorRecebido(valor > 0 ? valor.toFixed(2).replace('.', ',') : '')
+                    }
+                  }}
                     style={{ background: formaPagamento === fp.key ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${formaPagamento === fp.key ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: formaPagamento === fp.key ? '#D4A843' : '#4A5568', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: formaPagamento === fp.key ? 700 : 400, textAlign: 'left' as const }}>
                     {fp.icon} {fp.label}
                   </button>
@@ -375,14 +384,38 @@ export default function OrdensClient() {
                   <label style={lbl}>NÚMERO DE PARCELAS</label>
                   <select style={inp} value={parcelas} onChange={e => setParcelas(e.target.value)}>
                     {[2,3,4,5,6,7,8,9,10,11,12].map(n => (
-                      <option key={n} value={n}>{n}x de R$ {(valor / n).toFixed(2).replace('.', ',')}</option>
+                      <option key={n} value={n}>{n}x de R$ {(valor / n).toFixed(2).replace('.', ',')} (sem juros)</option>
                     ))}
                   </select>
                 </div>
               )}
+              {/* Valor recebido editável */}
+              <div style={{ marginTop: 12 }}>
+                <label style={lbl}>
+                  VALOR RECEBIDO
+                  {formaPagamento === 'cartao_parcelado'
+                    ? <span style={{ color: '#F97316', marginLeft: 6, fontSize: 10 }}>Informe o valor total com juros se houver</span>
+                    : <span style={{ color: '#4A5568', marginLeft: 6, fontSize: 10, fontWeight: 400 }}>Edite se houve desconto</span>}
+                </label>
+                <div style={{ position: 'relative' as const }}>
+                  <span style={{ position: 'absolute' as const, left: 14, top: '50%', transform: 'translateY(-50%)', color: '#4A5568', fontSize: 14 }}>R$</span>
+                  <input style={{ ...inp, paddingLeft: 36 }} value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} placeholder={valor > 0 ? valor.toFixed(2).replace('.', ',') : '0,00'} inputMode="decimal" />
+                </div>
+                {(() => {
+                  const vReal = parseFloat((valorRecebido || '0').replace(',', '.')) || 0
+                  const diff = vReal - valor
+                  if (Math.abs(diff) < 0.01 || vReal === 0) return null
+                  return (
+                    <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: diff > 0 ? 'rgba(249,115,22,0.08)' : 'rgba(72,187,120,0.08)', border: `1px solid ${diff > 0 ? 'rgba(249,115,22,0.2)' : 'rgba(72,187,120,0.2)'}`, display: 'flex', justifyContent: 'space-between' }}>
+                      <p style={{ color: diff > 0 ? '#F97316' : '#48BB78', fontSize: 12, fontWeight: 700, margin: 0 }}>{diff > 0 ? '📈 Acréscimo (juros)' : '📉 Desconto concedido'}</p>
+                      <p style={{ color: diff > 0 ? '#F97316' : '#48BB78', fontSize: 12, fontWeight: 900, margin: 0 }}>{diff > 0 ? '+' : ''}R$ {Math.abs(diff).toFixed(2).replace('.', ',')}</p>
+                    </div>
+                  )
+                })()}
+              </div>
               <div style={{ marginTop: 12 }}>
                 <label style={lbl}>OBSERVAÇÕES (opcional)</label>
-                <input style={inp} value={obsPagamento} onChange={e => setObsPagamento(e.target.value)} placeholder="Ex: Pago no ato, aguardando confirmação..." />
+                <input style={inp} value={obsPagamento} onChange={e => setObsPagamento(e.target.value)} placeholder="Ex: Pago no ato, cliente solicitou recibo..." />
               </div>
             </div>
           )}
