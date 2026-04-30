@@ -262,7 +262,7 @@ export default function FinanceiroClient() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <div>
                     <label style={lbl}>Nº DE PARCELAS</label>
-                    <input style={inp} type="number" min="2" max="48" value={parcelas} onChange={e => setParcelas(e.target.value)} placeholder="Ex: 10" />
+                    <input style={inp} type="text" inputMode="numeric" pattern="[0-9]*" value={parcelas} onChange={e => setParcelas(e.target.value.replace(/\D/g, ''))} placeholder="Ex: 10" />
                   </div>
                   <div>
                     <label style={lbl}>VALOR DA PARCELA (R$)</label>

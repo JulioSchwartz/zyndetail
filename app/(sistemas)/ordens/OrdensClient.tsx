@@ -40,6 +40,7 @@ type OS = {
   orcamento?: any
   fotos?: Foto[]
   itens?: OsItem[]
+  pagamentos?: { valor: number, forma: string }[]
 }
 
 type Aba = 'lista' | 'nova' | 'detalhe'
@@ -128,12 +129,29 @@ export default function OrdensClient() {
   }, [])
 
   async function carregarOrdens(eid: string) {
-    const { data } = await supabase
-      .from('ordens_servico')
-      .select('*, cliente:clientes(*), veiculo:veiculos(*), orcamento:orcamentos_detail(*, itens:orcamento_itens_detail(*)), fotos:os_fotos(*), itens:os_itens(*)')
-      .eq('empresa_id', eid)
-      .order('criado_em', { ascending: false })
-    setOrdens(data || [])
+    const [{ data: ords }, { data: pags }] = await Promise.all([
+      supabase
+        .from('ordens_servico')
+        .select('*, cliente:clientes(*), veiculo:veiculos(*), orcamento:orcamentos_detail(*, itens:orcamento_itens_detail(*)), fotos:os_fotos(*), itens:os_itens(*)')
+        .eq('empresa_id', eid)
+        .order('criado_em', { ascending: false }),
+      supabase
+        .from('pagamentos_os')
+        .select('os_id, valor, forma')
+        .eq('empresa_id', eid),
+    ])
+    // Mapear pagamentos por os_id
+    const pagMap: Record<string, { valor: number, forma: string }[]> = {}
+    ;(pags || []).forEach((p: any) => {
+      if (!pagMap[p.os_id]) pagMap[p.os_id] = []
+      pagMap[p.os_id].push(p)
+    })
+    // Injetar pagamentos em cada OS
+    const ordensComPag = (ords || []).map(os => ({
+      ...os,
+      pagamentos: pagMap[os.id] || [],
+    }))
+    setOrdens(ordensComPag)
   }
 
   async function carregarDados(eid: string) {
@@ -412,7 +430,7 @@ export default function OrdensClient() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={lbl}>Nº DE PARCELAS</label>
-                      <input style={inp} type="number" min="2" max="48" value={parcelas} onChange={e => setParcelas(e.target.value)} placeholder="Ex: 10" />
+                      <input style={inp} type="text" inputMode="numeric" pattern="[0-9]*" value={parcelas} onChange={e => setParcelas(e.target.value.replace(/\D/g, ''))} placeholder="Ex: 10" />
                     </div>
                     <div>
                       <label style={lbl}>VALOR DA PARCELA (R$)</label>
@@ -533,6 +551,11 @@ export default function OrdensClient() {
                       <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0 }}>{os.cliente?.nome}</p>
                       <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 700, border: `1px solid ${st.cor}33` }}>{st.label}</span>
                       {os.plano_id && <span style={{ background: 'rgba(144,205,244,0.1)', color: '#90CDF4', fontSize: 9, padding: '2px 7px', borderRadius: 6, fontWeight: 700, border: '1px solid rgba(144,205,244,0.2)' }}>PLANO</span>}
+                      {os.status === 'finalizada' && (
+                        (os as any).pagamentos?.length > 0
+                          ? <span style={{ background: 'rgba(72,187,120,0.1)', color: '#48BB78', fontSize: 9, padding: '2px 7px', borderRadius: 6, fontWeight: 700, border: '1px solid rgba(72,187,120,0.2)' }}>✅ PAGO</span>
+                          : <span style={{ background: 'rgba(252,129,129,0.08)', color: '#FC8181', fontSize: 9, padding: '2px 7px', borderRadius: 6, fontWeight: 700, border: '1px solid rgba(252,129,129,0.2)' }}>💰 PENDENTE</span>
+                      )}
                     </div>
                     <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
                       {os.veiculo?.marca} {os.veiculo?.modelo} · {os.veiculo?.placa}
