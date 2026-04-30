@@ -327,19 +327,34 @@ export default function DashboardClient() {
         {/* Gráfico por dia da semana */}
         <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16 }}>
           <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: '0 0 16px' }}>📈 Faturamento — Semana Atual</p>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120 }}>
+          {/* Área do gráfico com altura fixa — barras em px absoluto */}
+          <div style={{ position: 'relative' as const, height: 160, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 24 }}>
             {graficoSemana.map((d, idx) => {
-              const altura = maxValorSemana > 0 ? Math.max((d.valor / maxValorSemana) * 100, d.valor > 0 ? 8 : 2) : 2
+              const AREA_H = 136 // px disponível para as barras (160 - 24 labels)
+              const alturaPx = maxValorSemana > 0
+                ? Math.max((d.valor / maxValorSemana) * AREA_H, d.valor > 0 ? 20 : 3)
+                : 3
               const isHoje = idx === diaAtualIdx
               return (
-                <div key={d.dia} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div key={d.dia} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 0 }}>
                   {d.valor > 0 && (
-                    <p style={{ color: '#D4A843', fontSize: 9, fontWeight: 700, margin: 0, whiteSpace: 'nowrap' as const }}>
+                    <p style={{ color: '#D4A843', fontSize: 9, fontWeight: 700, margin: '0 0 3px', whiteSpace: 'nowrap' as const }}>
                       {d.valor >= 1000 ? `${(d.valor/1000).toFixed(1)}k` : d.valor.toFixed(0)}
                     </p>
                   )}
-                  <div style={{ width: '100%', height: `${altura}%`, background: isHoje ? 'linear-gradient(180deg, #F0C060, #D4A843)' : d.valor > 0 ? 'rgba(212,168,67,0.35)' : 'rgba(255,255,255,0.04)', borderRadius: '4px 4px 0 0', minHeight: 4, transition: 'height 0.3s' }} />
-                  <p style={{ color: isHoje ? '#D4A843' : '#4A5568', fontSize: 10, fontWeight: isHoje ? 700 : 400, margin: 0 }}>{d.dia}</p>
+                  <div style={{
+                    width: '80%',
+                    height: alturaPx,
+                    background: isHoje
+                      ? 'linear-gradient(180deg, #F0C060, #D4A843)'
+                      : d.valor > 0 ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.05)',
+                    borderRadius: '4px 4px 0 0',
+                    transition: 'height 0.4s ease',
+                    marginBottom: 6,
+                  }} />
+                  <p style={{ color: isHoje ? '#D4A843' : '#4A5568', fontSize: 10, fontWeight: isHoje ? 700 : 400, margin: 0, position: 'absolute' as const, bottom: 0 }}>
+                    {d.dia}
+                  </p>
                 </div>
               )
             })}
