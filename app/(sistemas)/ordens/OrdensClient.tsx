@@ -41,6 +41,26 @@ type OsItem = {
   valor?: number
 }
 
+type OS = {
+  id: string
+  empresa_id: string
+  cliente_id: string
+  veiculo_id: string
+  orcamento_id?: string
+  plano_id?: string
+  status: 'aberta' | 'em_andamento' | 'finalizada'
+  observacoes?: string
+  criado_em: string
+  finalizado_em?: string
+  notificacao_lida: boolean
+  token: string
+  cliente?: any
+  veiculo?: any
+  orcamento?: any
+  fotos?: Foto[]
+  itens?: OsItem[]
+}
+
 type Aba = 'lista' | 'nova' | 'detalhe'
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
@@ -78,6 +98,7 @@ export default function OrdensClient() {
   const [clientes, setClientes] = useState<any[]>([])
   const [servicos, setServicos] = useState<any[]>([])
   const [orcamentosAprovados, setOrcamentosAprovados] = useState<any[]>([])
+  const [planosAtivos, setPlanosAtivos] = useState<any[]>([])
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState('todos')
@@ -119,14 +140,16 @@ export default function OrdensClient() {
   }
 
   async function carregarDados(eid: string) {
-    const [{ data: cls }, { data: orcs }, { data: servs }] = await Promise.all([
+    const [{ data: cls }, { data: orcs }, { data: servs }, { data: planos }] = await Promise.all([
       supabase.from('clientes').select('*, veiculos(*)').eq('empresa_id', eid).order('nome'),
       supabase.from('orcamentos_detail').select('*, cliente:clientes(*), veiculo:veiculos(*), itens:orcamento_itens_detail(*)').eq('empresa_id', eid).eq('status', 'aprovado').order('criado_em', { ascending: false }),
       supabase.from('servicos_catalogo').select('*').eq('empresa_id', eid).eq('ativo', true).order('nome'),
+      supabase.from('planos_manutencao').select('id, veiculo_id, cliente_id, servicos').eq('empresa_id', eid).eq('status', 'ativo'),
     ])
     setClientes(cls || [])
     setOrcamentosAprovados(orcs || [])
     setServicos(servs || [])
+    setPlanosAtivos(planos || [])
   }
 
   async function abrirOS() {
@@ -144,11 +167,17 @@ export default function OrdensClient() {
       if (orc) { cid = orc.cliente_id; vid = orc.veiculo_id; oid = orc.id; itensOrcamento = orc.itens || [] }
     }
 
+    // Verificar se o veículo tem plano ativo (OS direta)
+    const planoDoVeiculo = tipoAbertura === 'direto'
+      ? planosAtivos.find(p => p.veiculo_id === vid) || null
+      : null
+
     const { data: os, error } = await supabase.from('ordens_servico').insert({
       empresa_id: empresaId,
       cliente_id: cid,
       veiculo_id: vid,
       orcamento_id: oid,
+      plano_id: planoDoVeiculo?.id || null,
       status: 'aberta',
       observacoes: obsNova.trim() || null,
       notificacao_lida: false,
@@ -340,6 +369,7 @@ export default function OrdensClient() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                     <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0 }}>{os.cliente?.nome}</p>
                     <span style={{ background: st.bg, color: st.cor, fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 700, border: `1px solid ${st.cor}33` }}>{st.label}</span>
+                    {os.plano_id && <span style={{ background: 'rgba(144,205,244,0.1)', color: '#90CDF4', fontSize: 9, padding: '2px 7px', borderRadius: 6, fontWeight: 700, border: '1px solid rgba(144,205,244,0.2)' }}>PLANO</span>}
                   </div>
                   <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>
                     {os.veiculo?.marca} {os.veiculo?.modelo} · {os.veiculo?.placa}
@@ -497,6 +527,7 @@ export default function OrdensClient() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>OS — {osSelecionada.cliente?.nome}</h1>
               <span style={{ background: st.bg, color: st.cor, fontSize: 11, padding: '3px 10px', borderRadius: 10, fontWeight: 700, border: `1px solid ${st.cor}33` }}>{st.label}</span>
+              {osSelecionada.plano_id && <span style={{ background: 'rgba(144,205,244,0.1)', color: '#90CDF4', fontSize: 10, padding: '3px 10px', borderRadius: 10, fontWeight: 700, border: '1px solid rgba(144,205,244,0.2)' }}>PLANO</span>}
             </div>
             <div style={{ width: 40, height: 2, background: 'linear-gradient(90deg, #D4A843, transparent)', marginTop: 6 }} />
           </div>
@@ -671,8 +702,10 @@ export default function OrdensClient() {
 
             {/* Resumo financeiro */}
             {valorTotal > 0 && (
-              <div style={{ background: '#0D1220', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 12, padding: 16 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 12 }}>VALOR DA OS</p>
+              <div style={{ background: '#0D1220', border: `1px solid ${osSelecionada.plano_id ? 'rgba(144,205,244,0.2)' : 'rgba(212,168,67,0.2)'}`, borderRadius: 12, padding: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: osSelecionada.plano_id ? '#90CDF4' : '#D4A843', letterSpacing: 2, marginBottom: 12 }}>
+                  {osSelecionada.plano_id ? '📅 PLANO MENSAL' : '💰 VALOR DA OS'}
+                </p>
                 {temOrcamento ? (
                   <div>
                     <p style={{ color: '#4A5568', fontSize: 11, margin: '0 0 4px' }}>Orçamento #{osSelecionada.orcamento?.token}</p>
