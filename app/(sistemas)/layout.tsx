@@ -21,6 +21,7 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
     { href: '/ordens',      label: 'OS'         },
     { href: '/agenda',      label: 'Agenda'     },
     { href: '/planos',      label: 'Planos'     },
+    { href: '/financeiro',  label: 'Financeiro' },
   ]
 
   if (pathname === '/setup') return <>{children}</>
