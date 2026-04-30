@@ -121,7 +121,7 @@ export default function FinanceiroClient() {
     setPagamentos(pags || [])
 
     const osComPagamento = new Set((pags || []).map((p: any) => p.os_id))
-    const pendentes = (osFinalizadas || []).filter(os => !osComPagamento.has(os.id) && !os.plano_id)
+    const pendentes = (osFinalizadas || []).filter(os => !osComPagamento.has(os.id))
     setOsPendentes(pendentes as any)
   }
 

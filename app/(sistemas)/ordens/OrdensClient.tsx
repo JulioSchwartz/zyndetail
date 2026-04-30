@@ -223,18 +223,21 @@ export default function OrdensClient() {
     setSalvandoPagamento(true)
 
     const finalizadoEm = new Date().toISOString()
+    const jaFinalizada = osParaFinalizar.status === 'finalizada'
 
-    await supabase.from('ordens_servico').update({
-      status: 'finalizada',
-      finalizado_em: finalizadoEm,
-      notificacao_lida: false,
-    }).eq('id', osParaFinalizar.id)
+    // Só atualiza status se ainda não estiver finalizada
+    if (!jaFinalizada) {
+      await supabase.from('ordens_servico').update({
+        status: 'finalizada',
+        finalizado_em: finalizadoEm,
+        notificacao_lida: false,
+      }).eq('id', osParaFinalizar.id)
+    }
 
     if (registrarPagamento) {
       const valorBase = calcularValorOS(osParaFinalizar)
       let valorFinal: number
       if (formaPagamento === 'cartao_parcelado') {
-        // Total = nº parcelas × valor da parcela
         valorFinal = parseInt(parcelas || '1') * (parseFloat((valorRecebido || '0').replace(',', '.')) || 0)
         if (valorFinal <= 0) valorFinal = valorBase
       } else {
@@ -246,16 +249,17 @@ export default function OrdensClient() {
         forma: formaPagamento,
         parcelas: formaPagamento === 'cartao_parcelado' ? parseInt(parcelas) : null,
         valor: valorFinal,
-        recebido_em: finalizadoEm,
+        recebido_em: jaFinalizada ? new Date().toISOString() : finalizadoEm,
         observacoes: obsPagamento.trim() || null,
         status: 'recebido',
       })
     }
 
+    const osId = osParaFinalizar.id
     setModalPagamento(false)
     setOsParaFinalizar(null)
     setSalvandoPagamento(false)
-    await abrirDetalhe(osParaFinalizar.id)
+    await abrirDetalhe(osId)
     await carregarOrdens(empresaId!)
   }
 
@@ -360,7 +364,9 @@ export default function OrdensClient() {
 
           {/* Cabeçalho com valor em destaque */}
           <div style={{ marginBottom: 20, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 16 }}>
-            <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 900, margin: '0 0 6px' }}>✅ Finalizar OS</h2>
+            <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 900, margin: '0 0 6px' }}>
+              {osParaFinalizar.status === 'finalizada' ? '💰 Registrar Pagamento' : '✅ Finalizar OS'}
+            </h2>
             <p style={{ color: '#4A5568', fontSize: 13, margin: '0 0 14px' }}>
               {osParaFinalizar.cliente?.nome} — {osParaFinalizar.veiculo?.marca} {osParaFinalizar.veiculo?.modelo} · {osParaFinalizar.veiculo?.placa}
             </p>
@@ -466,11 +472,11 @@ export default function OrdensClient() {
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
             <button onClick={() => confirmarFinalizacao(true)} disabled={salvandoPagamento}
               style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '13px 16px', borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: 'pointer', letterSpacing: 1 }}>
-              {salvandoPagamento ? 'FINALIZANDO...' : '✅ FINALIZAR E REGISTRAR PAGAMENTO'}
+              {salvandoPagamento ? 'SALVANDO...' : osParaFinalizar.status === 'finalizada' ? '✅ CONFIRMAR RECEBIMENTO' : '✅ FINALIZAR E REGISTRAR PAGAMENTO'}
             </button>
             <button onClick={() => confirmarFinalizacao(false)} disabled={salvandoPagamento}
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#4A5568', padding: '11px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13 }}>
-              Finalizar sem registrar pagamento
+              {osParaFinalizar.status === 'finalizada' ? 'Cancelar' : 'Finalizar sem registrar pagamento'}
             </button>
             <button onClick={() => setModalPagamento(false)} disabled={salvandoPagamento}
               style={{ background: 'transparent', border: 'none', color: '#4A5568', padding: '8px', cursor: 'pointer', fontSize: 12 }}>
@@ -844,6 +850,13 @@ export default function OrdensClient() {
                   <div style={{ background: 'rgba(72,187,120,0.08)', border: '1px solid rgba(72,187,120,0.2)', borderRadius: 8, padding: 12, textAlign: 'center' as const, marginBottom: 8 }}>
                     <p style={{ color: '#48BB78', fontWeight: 700, fontSize: 14, margin: 0 }}>✅ OS FINALIZADA</p>
                   </div>
+                )}
+                {/* Botão registrar pagamento para OS finalizada */}
+                {osSelecionada.status === 'finalizada' && (
+                  <button onClick={() => abrirModalPagamento(osSelecionada)}
+                    style={{ width: '100%', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', color: '#D4A843', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
+                    💰 REGISTRAR PAGAMENTO
+                  </button>
                 )}
                 {osSelecionada.status === 'em_andamento' && (
                   <button onClick={() => atualizarStatus(osSelecionada.id, 'aberta')}
