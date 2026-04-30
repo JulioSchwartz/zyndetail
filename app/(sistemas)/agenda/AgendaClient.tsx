@@ -393,21 +393,20 @@ export default function AgendaClient() {
                         return (
                           <div key={ag.id}
                             style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', overflow: 'hidden', zIndex: 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', height: '100%' }}>
-                              <div style={{ flex: 1, overflow: 'hidden', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); abrirModal(ag) }}>
-                                <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
-                                {ag.cliente && altura > 40 && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
-                                {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {formatarDuracao(ag.duracao_minutos)}</p>}
-                              </div>
-                              {podeGerarOS && altura > 36 && (
-                                <button
-                                  onClick={e => gerarOSDoAgendamento(ag, e)}
-                                  disabled={gerandoOS === ag.id}
-                                  title="Gerar OS"
-                                  style={{ background: 'rgba(212,168,67,0.2)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: 4, padding: '2px 5px', cursor: 'pointer', fontSize: 10, fontWeight: 900, flexShrink: 0, marginLeft: 4, lineHeight: 1.4 }}>
-                                  {gerandoOS === ag.id ? '…' : '🔧'}
-                                </button>
-                              )}
+                            {/* Botão Gerar OS — sempre no topo direito quando possível */}
+                            {podeGerarOS && (
+                              <button
+                                onClick={e => gerarOSDoAgendamento(ag, e)}
+                                disabled={gerandoOS === ag.id}
+                                title="Gerar OS"
+                                style={{ position: 'absolute' as const, top: 3, right: 3, background: 'rgba(212,168,67,0.25)', border: '1px solid rgba(212,168,67,0.5)', color: '#D4A843', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', fontSize: 9, fontWeight: 900, zIndex: 2, lineHeight: 1.6, whiteSpace: 'nowrap' as const }}>
+                                {gerandoOS === ag.id ? '…' : '🔧 OS'}
+                              </button>
+                            )}
+                            <div style={{ cursor: 'pointer', paddingRight: podeGerarOS ? 36 : 0 }} onClick={e => { e.stopPropagation(); abrirModal(ag) }}>
+                              <p style={{ color: st.cor, fontSize: 11, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</p>
+                              {ag.cliente && altura > 40 && <p style={{ color: '#4A5568', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{ag.cliente.nome}</p>}
+                              {altura > 60 && <p style={{ color: st.cor, fontSize: 10, margin: '2px 0 0', opacity: 0.7 }}>{ag.hora.slice(0,5)} · {formatarDuracao(ag.duracao_minutos)}</p>}
                             </div>
                           </div>
                         )

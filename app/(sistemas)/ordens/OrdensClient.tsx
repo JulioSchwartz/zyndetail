@@ -374,14 +374,14 @@ export default function OrdensClient() {
             )}
           </div>
 
-          {ehPlano ? (
-            <div style={{ background: 'rgba(144,205,244,0.06)', border: '1px solid rgba(144,205,244,0.2)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
-              <p style={{ color: '#90CDF4', fontSize: 13, fontWeight: 700, margin: '0 0 4px' }}>📅 OS de Plano Mensal</p>
-              <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>O pagamento é cobrado mensalmente. Deseja registrar mesmo assim?</p>
+          {ehPlano && (
+            <div style={{ background: 'rgba(144,205,244,0.06)', border: '1px solid rgba(144,205,244,0.2)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>📅</span>
+              <p style={{ color: '#90CDF4', fontSize: 12, margin: 0 }}>OS de <strong>Plano Mensal</strong> — registre se houver cobrança avulsa neste atendimento.</p>
             </div>
-          ) : (
-            <div style={{ marginBottom: 20 }}>
-              {/* Forma de pagamento */}
+          )}
+
+          <div style={{ marginBottom: 20 }}>
               <label style={{ ...lbl, marginBottom: 10 }}>FORMA DE PAGAMENTO</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                 {FORMAS_PAGAMENTO.map(fp => (
@@ -400,38 +400,22 @@ export default function OrdensClient() {
                 ))}
               </div>
 
-              {/* Cartão parcelado — campos manuais */}
               {formaPagamento === 'cartao_parcelado' && (
                 <div style={{ background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
                   <p style={{ color: '#F97316', fontSize: 11, fontWeight: 700, letterSpacing: 1, margin: '0 0 12px' }}>DETALHES DO PARCELAMENTO</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={lbl}>Nº DE PARCELAS</label>
-                      <input
-                        style={inp}
-                        type="number"
-                        min="2"
-                        max="48"
-                        value={parcelas}
-                        onChange={e => setParcelas(e.target.value)}
-                        placeholder="Ex: 10"
-                      />
+                      <input style={inp} type="number" min="2" max="48" value={parcelas} onChange={e => setParcelas(e.target.value)} placeholder="Ex: 10" />
                     </div>
                     <div>
                       <label style={lbl}>VALOR DA PARCELA (R$)</label>
                       <div style={{ position: 'relative' as const }}>
                         <span style={{ position: 'absolute' as const, left: 14, top: '50%', transform: 'translateY(-50%)', color: '#4A5568', fontSize: 14 }}>R$</span>
-                        <input
-                          style={{ ...inp, paddingLeft: 36 }}
-                          value={valorRecebido}
-                          onChange={e => setValorRecebido(e.target.value)}
-                          placeholder="Ex: 73,50"
-                          inputMode="decimal"
-                        />
+                        <input style={{ ...inp, paddingLeft: 36 }} value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} placeholder="Ex: 73,50" inputMode="decimal" />
                       </div>
                     </div>
                   </div>
-                  {/* Total calculado */}
                   {parcelas && valorRecebido && parseFloat((valorRecebido || '0').replace(',', '.')) > 0 && (
                     <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>Total a receber:</p>
@@ -454,7 +438,6 @@ export default function OrdensClient() {
                 </div>
               )}
 
-              {/* Valor recebido — apenas para não parcelado */}
               {formaPagamento !== 'cartao_parcelado' && (
                 <div style={{ marginBottom: 14 }}>
                   <label style={lbl}>
@@ -479,31 +462,20 @@ export default function OrdensClient() {
                 <input style={inp} value={obsPagamento} onChange={e => setObsPagamento(e.target.value)} placeholder="Ex: Pago no ato, cliente solicitou recibo..." />
               </div>
             </div>
-          )}
 
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-            {!ehPlano && (
-              <button onClick={() => confirmarFinalizacao(true)} disabled={salvandoPagamento}
-                style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '13px 16px', borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: 'pointer', letterSpacing: 1 }}>
-                {salvandoPagamento ? 'FINALIZANDO...' : '✅ FINALIZAR E REGISTRAR PAGAMENTO'}
-              </button>
-            )}
-            {ehPlano && (
-              <button onClick={() => confirmarFinalizacao(false)} disabled={salvandoPagamento}
-                style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '13px 16px', borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: 'pointer', letterSpacing: 1 }}>
-                {salvandoPagamento ? 'FINALIZANDO...' : '✅ FINALIZAR OS'}
-              </button>
-            )}
+            <button onClick={() => confirmarFinalizacao(true)} disabled={salvandoPagamento}
+              style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '13px 16px', borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: 'pointer', letterSpacing: 1 }}>
+              {salvandoPagamento ? 'FINALIZANDO...' : '✅ FINALIZAR E REGISTRAR PAGAMENTO'}
+            </button>
             <button onClick={() => confirmarFinalizacao(false)} disabled={salvandoPagamento}
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#4A5568', padding: '11px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13 }}>
-              {ehPlano ? 'Cancelar' : 'Finalizar sem registrar pagamento'}
+              Finalizar sem registrar pagamento
             </button>
-            {!ehPlano && (
-              <button onClick={() => setModalPagamento(false)} disabled={salvandoPagamento}
-                style={{ background: 'transparent', border: 'none', color: '#4A5568', padding: '8px', cursor: 'pointer', fontSize: 12 }}>
-                ← Voltar
-              </button>
-            )}
+            <button onClick={() => setModalPagamento(false)} disabled={salvandoPagamento}
+              style={{ background: 'transparent', border: 'none', color: '#4A5568', padding: '8px', cursor: 'pointer', fontSize: 12 }}>
+              ← Voltar
+            </button>
           </div>
         </div>
       </div>
