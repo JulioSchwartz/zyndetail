@@ -44,7 +44,7 @@ export async function POST(req: Request) {
         .eq('id', empresaId)
     }
 
-    // Criar sessão de checkout
+    // Criar sessão de checkout — sem trial (já foi dado no cadastro)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card', 'boleto'],
@@ -52,7 +52,6 @@ export async function POST(req: Request) {
       mode: 'subscription',
       allow_promotion_codes: true,
       subscription_data: {
-        trial_period_days: 7,
         metadata: { empresa_id: empresaId },
       },
       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?sucesso=1`,
