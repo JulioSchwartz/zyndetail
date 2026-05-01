@@ -43,10 +43,16 @@ export async function POST(req: Request) {
         const subscriptionId = session.subscription as string
         const subscription = await stripe.subscriptions.retrieve(subscriptionId)
         const priceId = subscription.items.data[0]?.price.id
-        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString()
-        const trialEnd = subscription.trial_end
-          ? new Date(subscription.trial_end * 1000).toISOString()
-          : null
+
+        // API nova usa current_period_end dentro de items ou billing_cycle_anchor
+        const subAny = subscription as any
+        const periodEnd = subAny.current_period_end
+          ?? subAny.items?.data?.[0]?.current_period_end
+          ?? null
+        const currentPeriodEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : null
+
+        const trialEndRaw = subAny.trial_end ?? null
+        const trialEnd = trialEndRaw ? new Date(trialEndRaw * 1000).toISOString() : null
 
         await supabaseAdmin
           .from('empresas_detail')
@@ -67,14 +73,18 @@ export async function POST(req: Request) {
       // ── Pagamento recebido (renovação) ──
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice
-        const subscriptionId = invoice.subscription as string
+        const subscriptionId = (invoice as any).subscription as string
         if (!subscriptionId) break
 
         const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-        const empresaId = subscription.metadata?.empresa_id
+        const empresaId = (subscription as any).metadata?.empresa_id
         if (!empresaId) break
 
-        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString()
+        const subAny = subscription as any
+        const periodEnd = subAny.current_period_end
+          ?? subAny.items?.data?.[0]?.current_period_end
+          ?? null
+        const currentPeriodEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : null
 
         await supabaseAdmin
           .from('empresas_detail')
@@ -91,7 +101,7 @@ export async function POST(req: Request) {
       // ── Pagamento falhou ──
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
-        const subscriptionId = invoice.subscription as string
+        const subscriptionId = (invoice as any).subscription as string
         if (!subscriptionId) break
 
         await supabaseAdmin
@@ -106,7 +116,6 @@ export async function POST(req: Request) {
       // ── Assinatura cancelada ──
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
-        const empresaId = subscription.metadata?.empresa_id
 
         await supabaseAdmin
           .from('empresas_detail')
@@ -120,11 +129,15 @@ export async function POST(req: Request) {
         break
       }
 
-      // ── Assinatura atualizada (upgrade/downgrade) ──
+      // ── Assinatura atualizada ──
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
         const priceId = subscription.items.data[0]?.price.id
-        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString()
+        const subAny = subscription as any
+        const periodEnd = subAny.current_period_end
+          ?? subAny.items?.data?.[0]?.current_period_end
+          ?? null
+        const currentPeriodEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : null
 
         await supabaseAdmin
           .from('empresas_detail')
@@ -144,7 +157,6 @@ export async function POST(req: Request) {
       case 'customer.subscription.trial_will_end': {
         const subscription = event.data.object as Stripe.Subscription
         console.log(`⏰ Trial terminando em 3 dias: ${subscription.id}`)
-        // Aqui você pode enviar e-mail de aviso via Resend
         break
       }
     }
