@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import Stripe from 'stripe'
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-06-20',
+})
 
 export async function POST(req: Request) {
   const supabaseAdmin = createClient(
@@ -31,13 +36,32 @@ export async function POST(req: Request) {
     const user = authData.user
     if (!user) return NextResponse.json({ error: 'Erro ao criar usuário.' }, { status: 500 })
 
-    // 2. Cria empresa
+    // 2. Cria customer no Stripe
+    let stripeCustomerId: string | null = null
+    try {
+      const customer = await stripe.customers.create({
+        email,
+        name: nomeEmpresa?.trim() || email,
+        metadata: { origem: 'zyndetail_cadastro' },
+      })
+      stripeCustomerId = customer.id
+    } catch (stripeErr) {
+      console.error('Erro ao criar customer Stripe:', stripeErr)
+      // Não bloqueia o cadastro se o Stripe falhar
+    }
+
+    // 3. Cria empresa com trial de 7 dias
+    const trialEndsAt = new Date()
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7)
+
     const { data: empresa, error: erroEmpresa } = await supabaseAdmin
       .from('empresas_detail')
       .insert({
         nome: nomeEmpresa?.trim() || email,
-        plano: 'basico',
+        plano: 'trial',
         status: 'trial',
+        stripe_customer_id: stripeCustomerId,
+        trial_ends_at: trialEndsAt.toISOString(),
         criado_em: new Date().toISOString(),
       })
       .select().single()
@@ -47,7 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao criar empresa.' }, { status: 500 })
     }
 
-    // 3. Cria usuário
+    // 4. Cria usuário
     const { error: erroUsuario } = await supabaseAdmin
       .from('usuarios_detail')
       .insert({
@@ -61,7 +85,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao vincular usuário.' }, { status: 500 })
     }
 
-    // 4. Notificação por email
+    // 5. Notificação por email para você
     try {
       const resend = new Resend(process.env.RESEND_API_KEY!)
       await resend.emails.send({
@@ -76,15 +100,16 @@ export async function POST(req: Request) {
               </div>
               <div>
                 <span style="color: #fff; font-size: 16px; font-weight: 900; letter-spacing: 2px;">ZYNDETAIL</span><br/>
-                <span style="color: #2B6CB0; font-size: 10px; letter-spacing: 3px;">GESTÃO AUTOMOTIVA</span>
+                <span style="color: #D4A843; font-size: 10px; letter-spacing: 3px;">GESTÃO AUTOMOTIVA</span>
               </div>
             </div>
             <h2 style="color: #D4A843; margin-bottom: 24px;">🚗 Novo cadastro na Zyndetail!</h2>
             <table style="width: 100%; border-collapse: collapse;">
-              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #2B6CB0; font-size: 13px; width: 140px;">Nome</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeUsuario || '—'}</td></tr>
-              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #2B6CB0; font-size: 13px;">Estética</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeEmpresa || '—'}</td></tr>
-              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #2B6CB0; font-size: 13px;">E-mail</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${email}</td></tr>
-              <tr><td style="padding: 12px 0; color: #2B6CB0; font-size: 13px;">Data/hora</td><td style="padding: 12px 0; font-weight: 600;">${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td></tr>
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px; width: 140px;">Nome</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeUsuario || '—'}</td></tr>
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px;">Estética</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeEmpresa || '—'}</td></tr>
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px;">E-mail</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${email}</td></tr>
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px;">Trial até</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600; color: #D4A843;">${trialEndsAt.toLocaleDateString('pt-BR')}</td></tr>
+              <tr><td style="padding: 12px 0; color: #4A5568; font-size: 13px;">Data/hora</td><td style="padding: 12px 0; font-weight: 600;">${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td></tr>
             </table>
           </div>
         `,
@@ -93,7 +118,7 @@ export async function POST(req: Request) {
       console.error('Erro ao enviar notificação:', emailErr)
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, empresaId: empresa.id })
 
   } catch (err) {
     console.error('Erro cadastro Zyndetail:', err)
