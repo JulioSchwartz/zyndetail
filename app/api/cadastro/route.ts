@@ -21,7 +21,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 })
     }
 
-    // 1. Cria usuário no auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email, password, email_confirm: false,
     })
@@ -36,7 +35,6 @@ export async function POST(req: Request) {
     const user = authData.user
     if (!user) return NextResponse.json({ error: 'Erro ao criar usuário.' }, { status: 500 })
 
-    // 2. Cria customer no Stripe
     let stripeCustomerId: string | null = null
     try {
       const customer = await stripe.customers.create({
@@ -47,10 +45,8 @@ export async function POST(req: Request) {
       stripeCustomerId = customer.id
     } catch (stripeErr) {
       console.error('Erro ao criar customer Stripe:', stripeErr)
-      // Não bloqueia o cadastro se o Stripe falhar
     }
 
-    // 3. Cria empresa com trial de 7 dias
     const trialEndsAt = new Date()
     trialEndsAt.setDate(trialEndsAt.getDate() + 7)
 
@@ -71,7 +67,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao criar empresa.' }, { status: 500 })
     }
 
-    // 4. Cria usuário
     const { error: erroUsuario } = await supabaseAdmin
       .from('usuarios_detail')
       .insert({
@@ -85,13 +80,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao vincular usuário.' }, { status: 500 })
     }
 
-    // 5. Notificação por email para você
+    const resend = new Resend(process.env.RESEND_API_KEY!)
+
+    // Email de boas-vindas para o usuário
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY!)
       await resend.emails.send({
-        from: 'Zyndetail <noreply@zynplan.com.br>',
-        to: ['j.ulioschwartz@hotmail.com'],
-        subject: `🚗 Novo cadastro Zyndetail: ${nomeEmpresa || email}`,
+        from: 'Zyndetail <noreply@zyncompany.com.br>',
+        to: [email],
+        subject: `Bem-vindo à Zyndetail, ${nomeEmpresa || ''}!`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #0A0F1E; color: #fff; border-radius: 12px;">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 28px;">
@@ -103,6 +99,33 @@ export async function POST(req: Request) {
                 <span style="color: #D4A843; font-size: 10px; letter-spacing: 3px;">GESTÃO AUTOMOTIVA</span>
               </div>
             </div>
+            <h2 style="color: #D4A843; margin-bottom: 8px;">Bem-vindo à Zyndetail! 🚗</h2>
+            <p style="color: #94a3b8; margin-bottom: 24px;">Sua conta foi criada com sucesso. Você tem <strong style="color:#fff;">7 dias de trial gratuito</strong> para testar a plataforma.</p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px; width: 140px;">Estética</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeEmpresa || '—'}</td></tr>
+              <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px;">E-mail</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${email}</td></tr>
+              <tr><td style="padding: 12px 0; color: #4A5568; font-size: 13px;">Trial até</td><td style="padding: 12px 0; font-weight: 600; color: #D4A843;">${trialEndsAt.toLocaleDateString('pt-BR')}</td></tr>
+            </table>
+            <a href="https://zyndetail.com.br/auth/login"
+               style="display: inline-block; background: #D4A843; color: #0A0F1E; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700;">
+              Acessar minha conta →
+            </a>
+            <p style="color: #475569; font-size: 13px; margin-top: 32px;">Qualquer dúvida, fale com a gente em <a href="https://zyncompany.com.br/contato" style="color: #D4A843;">zyncompany.com.br/contato</a>.</p>
+          </div>
+        `,
+      })
+    } catch (emailErr) {
+      console.error('Erro ao enviar boas-vindas:', emailErr)
+    }
+
+    // Notificação interna
+    try {
+      await resend.emails.send({
+        from: 'Zyndetail <noreply@zyncompany.com.br>',
+        to: ['suportezyndetail@gmail.com'],
+        subject: `🚗 Novo cadastro Zyndetail: ${nomeEmpresa || email}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #0A0F1E; color: #fff; border-radius: 12px;">
             <h2 style="color: #D4A843; margin-bottom: 24px;">🚗 Novo cadastro na Zyndetail!</h2>
             <table style="width: 100%; border-collapse: collapse;">
               <tr><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; color: #4A5568; font-size: 13px; width: 140px;">Nome</td><td style="padding: 12px 0; border-bottom: 1px solid #1a2744; font-weight: 600;">${nomeUsuario || '—'}</td></tr>
