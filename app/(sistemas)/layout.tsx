@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+const MANUAL_URL = 'https://cpyvksnsfihybemvxvap.supabase.co/storage/v1/object/public/manuais/zyndetail_manual.pdf'
+
 export default function SistemasLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -52,6 +54,10 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
               </a>
             )
           })}
+          <a href={MANUAL_URL} target="_blank" rel="noopener noreferrer"
+            style={{ color: '#4A5568', textDecoration: 'none', padding: '6px 11px', borderRadius: 6, fontSize: 12, fontWeight: 400, background: 'transparent', border: '1px solid transparent', letterSpacing: 0.3, transition: 'all 0.2s' }}>
+            &#128214; Manual
+          </a>
         </nav>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -68,6 +74,10 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
               {item.label}
             </a>
           ))}
+          <a href={MANUAL_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)}
+            style={{ display: 'block', color: '#4A5568', textDecoration: 'none', padding: '12px 8px', fontSize: 14, borderBottom: '1px solid rgba(255,255,255,0.04)', fontWeight: 400 }}>
+            &#128214; Manual
+          </a>
         </div>
       )}
 
