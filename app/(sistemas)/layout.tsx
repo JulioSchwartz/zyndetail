@@ -9,25 +9,62 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
   const router = useRouter()
   const pathname = usePathname()
   const [menuAberto, setMenuAberto] = useState(false)
+  const [verificado, setVerificado] = useState(false)
+  const [diasTrial, setDiasTrial] = useState<number | null>(null)
   const [mostrarBannerPWA, setMostrarBannerPWA] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
 
   useEffect(() => {
-    // Detecta se já está instalado como PWA
     const jáInstalado = window.matchMedia('(display-mode: standalone)').matches
-    // Detecta se é mobile
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-    // Verifica se já fechou o banner antes
     const jáFechou = localStorage.getItem('zyndetail_pwa_banner') === 'fechado'
-    // Detecta iOS
     const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent)
-
     setIsIOS(ios)
-
-    if (isMobile && !jáInstalado && !jáFechou) {
-      setMostrarBannerPWA(true)
-    }
+    if (isMobile && !jáInstalado && !jáFechou) setMostrarBannerPWA(true)
   }, [])
+
+  useEffect(() => {
+    async function verificar() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/auth/login'); return }
+
+      if (pathname === '/assinar') { setVerificado(true); return }
+
+      const { data: usuario } = await supabase
+        .from('usuarios_detail')
+        .select('empresa_id')
+        .eq('user_id', session.user.id)
+        .single()
+
+      if (!usuario) { router.push('/auth/login'); return }
+
+      const { data: empresa } = await supabase
+        .from('empresas_detail')
+        .select('status, trial_ends_at')
+        .eq('id', usuario.empresa_id)
+        .single()
+
+      if (empresa) {
+        const statusBloqueado = ['inadimplente', 'cancelado'].includes(empresa.status)
+        const trialVencido =
+          empresa.status === 'trial' &&
+          empresa.trial_ends_at &&
+          new Date(empresa.trial_ends_at) < new Date()
+
+        if (statusBloqueado || trialVencido) {
+          router.push('/assinar'); return
+        }
+
+        if (empresa.status === 'trial' && empresa.trial_ends_at) {
+          const diff = Math.ceil((new Date(empresa.trial_ends_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+          setDiasTrial(diff > 0 ? diff : 0)
+        }
+      }
+
+      setVerificado(true)
+    }
+    verificar()
+  }, [pathname])
 
   function fecharBanner() {
     localStorage.setItem('zyndetail_pwa_banner', 'fechado')
@@ -50,7 +87,15 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
     { href: '/financeiro',  label: 'Financeiro' },
   ]
 
-  if (pathname === '/setup') return <>{children}</>
+  if (!verificado && pathname !== '/assinar') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#080C18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#D4A843', fontWeight: 700, fontSize: 16 }}>Carregando...</p>
+      </div>
+    )
+  }
+
+  if (pathname === '/setup' || pathname === '/assinar') return <>{children}</>
 
   return (
     <div style={{ minHeight: '100vh', background: '#080C18' }}>
@@ -109,7 +154,20 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
           </a>
         </nav>
 
+        {/* DIREITA: TRIAL + SAIR */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {diasTrial !== null && (
+            <button onClick={() => router.push('/assinar')}
+              style={{
+                background: diasTrial <= 2 ? 'rgba(252,129,129,0.15)' : 'rgba(212,168,67,0.1)',
+                border: `1px solid ${diasTrial <= 2 ? 'rgba(252,129,129,0.3)' : 'rgba(212,168,67,0.2)'}`,
+                color: diasTrial <= 2 ? '#FC8181' : '#D4A843',
+                padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' as const, letterSpacing: 0.5,
+              }}>
+              ⏰ {diasTrial === 0 ? 'TRIAL ENCERRA HOJE' : `${diasTrial} DIA${diasTrial > 1 ? 'S' : ''} DE TRIAL`}
+            </button>
+          )}
           <a href="/configuracoes" style={{ fontSize: 16, textDecoration: 'none', padding: '5px 10px', borderRadius: 6, color: pathname === '/configuracoes' ? '#D4A843' : '#4A5568', background: pathname === '/configuracoes' ? 'rgba(212,168,67,0.1)' : 'transparent' }}>⚙️</a>
           <button onClick={sair} style={{ background: 'transparent', border: '1px solid rgba(212,168,67,0.2)', color: '#4A5568', padding: '5px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 11, letterSpacing: 1, fontWeight: 700 }}>SAIR</button>
         </div>
