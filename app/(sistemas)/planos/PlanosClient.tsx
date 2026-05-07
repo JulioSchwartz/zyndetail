@@ -467,7 +467,7 @@ export default function PlanosClient() {
             const diasRestantes = p.proximo_atendimento ? diasAteProximo(p.proximo_atendimento) : null
             const urgente = diasRestantes !== null && diasRestantes <= 2 && p.status === 'ativo'
             return (
-              <div key={p.id} style={{ background: '#0D1220', border: `1px solid ${urgente ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 16, display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div key={p.id} style={{ background: '#0D1220', border: `1px solid ${urgente ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 12, padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' as const }}>
                 <div onClick={() => { setPlanoSelecionado(p); setAba('detalhe') }} style={{ display: 'flex', gap: 14, alignItems: 'center', flex: 1, cursor: 'pointer' }}>
                   <div style={{ background: `${per?.cor}18`, border: `1px solid ${per?.cor}44`, borderRadius: 12, width: 52, height: 52, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <span style={{ fontSize: 20 }}>{per?.icon}</span>
