@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -9,6 +9,30 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
   const router = useRouter()
   const pathname = usePathname()
   const [menuAberto, setMenuAberto] = useState(false)
+  const [mostrarBannerPWA, setMostrarBannerPWA] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+
+  useEffect(() => {
+    // Detecta se já está instalado como PWA
+    const jáInstalado = window.matchMedia('(display-mode: standalone)').matches
+    // Detecta se é mobile
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+    // Verifica se já fechou o banner antes
+    const jáFechou = localStorage.getItem('zyndetail_pwa_banner') === 'fechado'
+    // Detecta iOS
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+
+    setIsIOS(ios)
+
+    if (isMobile && !jáInstalado && !jáFechou) {
+      setMostrarBannerPWA(true)
+    }
+  }, [])
+
+  function fecharBanner() {
+    localStorage.setItem('zyndetail_pwa_banner', 'fechado')
+    setMostrarBannerPWA(false)
+  }
 
   async function sair() {
     await supabase.auth.signOut()
@@ -30,6 +54,31 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
 
   return (
     <div style={{ minHeight: '100vh', background: '#080C18' }}>
+
+      {/* BANNER PWA */}
+      {mostrarBannerPWA && (
+        <div style={{ background: 'rgba(212,168,67,0.1)', borderBottom: '1px solid rgba(212,168,67,0.2)', padding: '10px 16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>📲</span>
+            <div>
+              <p style={{ color: '#D4A843', fontWeight: 700, fontSize: 13, margin: '0 0 2px' }}>
+                Instale o Zyndetail no seu celular!
+              </p>
+              <p style={{ color: '#8A7040', fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                {isIOS
+                  ? 'No Safari: toque em Compartilhar → "Adicionar à Tela de Início"'
+                  : 'No Chrome: toque no menu ⋮ → "Adicionar à tela inicial"'}
+              </p>
+            </div>
+          </div>
+          <button onClick={fecharBanner}
+            style={{ background: 'transparent', border: 'none', color: '#8A7040', fontSize: 18, cursor: 'pointer', flexShrink: 0, padding: 0, lineHeight: 1 }}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* TOPBAR */}
       <div style={{ background: '#0A0F1E', borderBottom: '1px solid rgba(212,168,67,0.15)', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => setMenuAberto(!menuAberto)} className="hamburger"
@@ -66,6 +115,7 @@ export default function SistemasLayout({ children }: { children: React.ReactNode
         </div>
       </div>
 
+      {/* MENU MOBILE */}
       {menuAberto && (
         <div style={{ background: '#0A0F1E', borderBottom: '1px solid rgba(212,168,67,0.1)', padding: '8px 16px' }} className="nav-mobile">
           {menu.map(item => (
