@@ -318,11 +318,11 @@ export default function PlanosClient() {
 
   // Formulário compartilhado entre novo e editar
   const FormularioPlano = ({ modoEdicao }: { modoEdicao: boolean }) => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 760 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, maxWidth: 760 }}>
       {!modoEdicao && (
         <div style={{ gridColumn: '1 / -1', background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>CLIENTE E VEÍCULO</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={lbl}>Cliente <span style={{ color: '#D4A843' }}>*</span></label>
               <select style={inp} value={clienteId} onChange={e => { setClienteId(e.target.value); setVeiculoId(''); setErro('') }}>
@@ -358,7 +358,7 @@ export default function PlanosClient() {
             </button>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
           <div>
             <label style={lbl}>Dia preferido</label>
             <select style={inp} value={diaSemana} onChange={e => setDiaSemana(e.target.value)}>
@@ -589,7 +589,7 @@ export default function PlanosClient() {
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DO PLANO</p>
