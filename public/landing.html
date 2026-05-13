@@ -955,7 +955,9 @@
     .how-grid::before { display: none; }
     .how-step + .how-step { border-left: none; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 32px; margin-top: 32px; }
     .nav-links { display: none; }
+    .nav-cta { display: none; }
     .proof-items { gap: 16px; }
+    .nav-hamburger { display: flex !important; }
   }
 
   @media (max-width: 600px) {
@@ -964,6 +966,110 @@
     .plans-grid { grid-template-columns: 1fr; }
     footer { flex-direction: column; text-align: center; }
     .footer-links { justify-content: center; flex-wrap: wrap; }
+  }
+
+  /* ── MOBILE MENU ── */
+  .nav-hamburger {
+    display: none;
+    background: transparent;
+    border: 1px solid rgba(212,168,67,0.25);
+    color: var(--gold-1);
+    width: 38px; height: 38px;
+    border-radius: 8px;
+    font-size: 18px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 199;
+  }
+
+  .mobile-menu-backdrop.open { display: block; }
+
+  .mobile-menu {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 260px;
+    background: #0A0F1E;
+    border-left: 1px solid rgba(212,168,67,0.15);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .mobile-menu.open { transform: translateX(0); }
+
+  .mobile-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(212,168,67,0.1);
+  }
+
+  .mobile-menu-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+  }
+
+  .mobile-menu-links {
+    flex: 1;
+    padding: 8px 0;
+    list-style: none;
+  }
+
+  .mobile-menu-links li a {
+    display: block;
+    color: var(--chrome);
+    text-decoration: none;
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .mobile-menu-links li a:hover {
+    color: var(--gold-1);
+    border-left-color: var(--gold-1);
+    background: rgba(212,168,67,0.05);
+  }
+
+  .mobile-menu-links li a.entrar {
+    color: var(--gold-1);
+    font-weight: 700;
+  }
+
+  .mobile-menu-footer {
+    padding: 16px 20px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .mobile-menu-footer a {
+    display: block;
+    background: var(--gold-grad);
+    color: var(--bg);
+    text-align: center;
+    padding: 13px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-decoration: none;
   }
 </style>
 </head>
@@ -986,7 +1092,30 @@
     <li><a href="/auth/login">Entrar</a></li>
   </ul>
   <a href="/auth/cadastro" class="nav-cta">EXPERIMENTE GRÁTIS</a>
+  <button class="nav-hamburger" onclick="abrirMenu()" aria-label="Menu">☰</button>
 </nav>
+
+<!-- MOBILE MENU -->
+<div class="mobile-menu-backdrop" id="backdrop" onclick="fecharMenu()"></div>
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mobile-menu-header">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="background:linear-gradient(135deg,#D4A843,#F0C060);border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#080C18;">Z</div>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;color:#fff;">ZYNDETAIL</span>
+    </div>
+    <button class="mobile-menu-close" onclick="fecharMenu()">✕</button>
+  </div>
+  <ul class="mobile-menu-links">
+    <li><a href="#features" onclick="fecharMenu()">Funcionalidades</a></li>
+    <li><a href="#how" onclick="fecharMenu()">Como funciona</a></li>
+    <li><a href="#pricing" onclick="fecharMenu()">Planos</a></li>
+    <li><a href="#testimonials" onclick="fecharMenu()">Depoimentos</a></li>
+    <li><a href="/auth/login" class="entrar" onclick="fecharMenu()">→ Entrar</a></li>
+  </ul>
+  <div class="mobile-menu-footer">
+    <a href="/auth/cadastro">✦ EXPERIMENTE 7 DIAS GRÁTIS</a>
+  </div>
+</div>
 
 <!-- HERO -->
 <section class="hero">
@@ -1323,6 +1452,19 @@
       ? 'rgba(8,12,24,0.98)'
       : 'rgba(8,12,24,0.85)';
   });
+
+  // Mobile menu
+  function abrirMenu() {
+    document.getElementById('mobileMenu').classList.add('open');
+    document.getElementById('backdrop').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function fecharMenu() {
+    document.getElementById('mobileMenu').classList.remove('open');
+    document.getElementById('backdrop').classList.remove('open');
+    document.body.style.overflow = '';
+  }
 </script>
 </body>
 </html>
