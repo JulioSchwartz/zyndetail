@@ -32,9 +32,10 @@ const PERIODICIDADE: Record<string, { label: string, icon: string, cor: string, 
 }
 
 const STATUS_CONFIG: Record<string, { label: string, cor: string, bg: string }> = {
-  ativo:     { label: 'ATIVO',     cor: '#48BB78', bg: 'rgba(72,187,120,0.1)'   },
-  pausado:   { label: 'PAUSADO',   cor: '#D4A843', bg: 'rgba(212,168,67,0.1)'  },
-  cancelado: { label: 'CANCELADO', cor: '#FC8181', bg: 'rgba(252,129,129,0.1)' },
+  ativo:        { label: 'ATIVO',        cor: '#48BB78', bg: 'rgba(72,187,120,0.1)'   },
+  pausado:      { label: 'PAUSADO',      cor: '#D4A843', bg: 'rgba(212,168,67,0.1)'  },
+  inadimplente: { label: 'INADIMPLENTE', cor: '#FC8181', bg: 'rgba(252,129,129,0.12)' },
+  cancelado:    { label: 'CANCELADO',    cor: '#4A5568', bg: 'rgba(74,85,104,0.1)'   },
 }
 
 const DIAS_OPTIONS = [
@@ -590,6 +591,23 @@ export default function PlanosClient() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+
+          {/* Banner inadimplente */}
+          {planoSelecionado.status === 'inadimplente' && (
+            <div style={{ gridColumn: '1 / -1', background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.3)', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' as const }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>🚫</span>
+                <div>
+                  <p style={{ color: '#FC8181', fontSize: 13, fontWeight: 900, margin: '0 0 3px' }}>Cliente inadimplente — agendamento público bloqueado</p>
+                  <p style={{ color: '#4A5568', fontSize: 12, margin: 0 }}>O cliente não consegue agendar pelo link público até o plano ser regularizado. A estética pode agendar normalmente.</p>
+                </div>
+              </div>
+              <button onClick={() => atualizarStatus(planoSelecionado.id, 'ativo')}
+                style={{ background: 'rgba(72,187,120,0.15)', border: '1px solid rgba(72,187,120,0.35)', color: '#48BB78', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap' as const }}>
+                ✅ REGULARIZAR PLANO
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 20 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', letterSpacing: 2, marginBottom: 14, borderBottom: '1px solid rgba(212,168,67,0.1)', paddingBottom: 10 }}>DADOS DO PLANO</p>

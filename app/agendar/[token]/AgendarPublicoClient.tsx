@@ -23,6 +23,13 @@ function mascaraTelefone(v: string) {
   return v.replace(/(\d{2})(\d{1})(\d{4})(\d{0,4})/, '($1) $2 $3-$4').replace(/-$/, '')
 }
 
+function mascaraPlaca(v: string) {
+  // Aceita formato antigo (ABC1234) e Mercosul (ABC1D23)
+  v = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
+  if (v.length <= 3) return v
+  return v.slice(0, 3) + '-' + v.slice(3)
+}
+
 type Etapa = 'escolher_data' | 'escolher_hora' | 'dados' | 'confirmado'
 
 export default function AgendarPublicoClient() {
@@ -45,7 +52,8 @@ export default function AgendarPublicoClient() {
   // Dados do solicitante
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
-  const [veiculo, setVeiculo] = useState('')
+  const [modeloVeiculo, setModeloVeiculo] = useState('')
+  const [placaVeiculo, setPlacaVeiculo] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
   // Semana navegável
@@ -130,10 +138,50 @@ export default function AgendarPublicoClient() {
     setErro('')
     if (!nome.trim()) { setErro('Informe seu nome.'); return }
     if (telefone.replace(/\D/g, '').length < 10) { setErro('Informe um telefone válido.'); return }
-    if (!veiculo.trim()) { setErro('Informe o veículo.'); return }
+    if (!modeloVeiculo.trim()) { setErro('Informe o modelo do veículo.'); return }
+    if (placaVeiculo.replace(/[^A-Z0-9]/g, '').length < 7) { setErro('Informe a placa do veículo.'); return }
     setSalvando(true)
 
+    // Verificação de inadimplência por telefone + placa
+    const telLimpo = telefone.replace(/\D/g, '')
+    const placaLimpa = placaVeiculo.replace(/[^A-Z0-9]/g, '').toUpperCase()
+
+    const { data: clienteInad } = await supabase
+      .from('clientes')
+      .select('id')
+      .eq('empresa_id', empresa.id)
+      .ilike('telefone', `%${telLimpo.slice(-8)}%`)
+      .maybeSingle()
+
+    if (clienteInad?.id) {
+      // Busca veículo com essa placa vinculado ao cliente
+      const { data: veiculoInad } = await supabase
+        .from('veiculos')
+        .select('id')
+        .eq('cliente_id', clienteInad.id)
+        .ilike('placa', `%${placaLimpa}%`)
+        .maybeSingle()
+
+      if (veiculoInad?.id) {
+        const { data: planoInad } = await supabase
+          .from('planos_manutencao')
+          .select('id')
+          .eq('empresa_id', empresa.id)
+          .eq('cliente_id', clienteInad.id)
+          .eq('veiculo_id', veiculoInad.id)
+          .eq('status', 'inadimplente')
+          .maybeSingle()
+
+        if (planoInad) {
+          setErro(`⚠️ O plano do veículo de placa ${placaVeiculo} está com pagamento pendente. Entre em contato com a estética para regularizar antes de agendar.`)
+          setSalvando(false)
+          return
+        }
+      }
+    }
+
     const serv = servicos.find(s => s.nome === servicoSelecionado)
+    const veiculoCompleto = `${modeloVeiculo.trim()} — ${placaVeiculo}`
 
     const { error } = await supabase.from('agendamentos').insert({
       empresa_id: empresa.id,
@@ -146,7 +194,7 @@ export default function AgendarPublicoClient() {
       tipo: 'solicitacao',
       solicitante_nome: nome.trim(),
       solicitante_telefone: telefone,
-      solicitante_veiculo: veiculo.trim(),
+      solicitante_veiculo: veiculoCompleto,
       observacoes: observacoes.trim() || null,
       notificacao_lida: false,
     })
@@ -203,7 +251,8 @@ export default function AgendarPublicoClient() {
             { label: 'Data', valor: new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) },
             { label: 'Horário', valor: horaSelecionada },
             { label: 'Serviço', valor: servicoSelecionado || 'Não especificado' },
-            { label: 'Veículo', valor: veiculo },
+            { label: 'Veículo', valor: modeloVeiculo },
+            { label: 'Placa', valor: placaVeiculo },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
               <p style={{ color: '#4A5568', fontSize: 13, margin: 0 }}>{item.label}</p>
@@ -407,8 +456,16 @@ export default function AgendarPublicoClient() {
                 <input style={inp} value={telefone} onChange={e => setTelefone(mascaraTelefone(e.target.value))} placeholder="(42) 9 9999-9999" maxLength={16} />
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }}>VEÍCULO *</label>
-                <input style={inp} value={veiculo} onChange={e => setVeiculo(e.target.value)} placeholder="Ex: Honda Civic Prata — ABC1234" />
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }}>MODELO DO VEÍCULO *</label>
+                <input style={inp} value={modeloVeiculo} onChange={e => setModeloVeiculo(e.target.value)} placeholder="Ex: Honda Civic Prata" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }}>PLACA *</label>
+                <input style={{ ...inp, textTransform: 'uppercase' as const, letterSpacing: 2, fontWeight: 700 }}
+                  value={placaVeiculo}
+                  onChange={e => setPlacaVeiculo(mascaraPlaca(e.target.value))}
+                  placeholder="ABC-1234"
+                  maxLength={8} />
               </div>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, letterSpacing: 1 }}>OBSERVAÇÕES</label>
