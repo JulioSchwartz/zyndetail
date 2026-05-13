@@ -20,7 +20,6 @@ export default function LoginClient() {
       return
     }
 
-    // Força reload completo — garante que cookie é lido antes de montar o dashboard
     window.location.href = '/dashboard'
   }
 
@@ -87,16 +86,23 @@ export default function LoginClient() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
+              style={inputSt}
             />
           </div>
           <div>
-            <label style={labelSt}>Senha</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ ...labelSt, marginBottom: 0 }}>Senha</label>
+              <a href="/auth/recuperar-senha" style={{ fontSize: 11, color: '#90CDF4', textDecoration: 'none', fontWeight: 600, letterSpacing: 0.5 }}>
+                Esqueci minha senha
+              </a>
+            </div>
             <input
               type="password"
               value={senha}
               onChange={e => setSenha(e.target.value)}
               placeholder="••••••••"
               onKeyDown={e => e.key === 'Enter' && entrar()}
+              style={inputSt}
             />
           </div>
 
@@ -156,4 +162,16 @@ const labelSt: React.CSSProperties = {
   marginBottom: 6,
   letterSpacing: 1,
   textTransform: 'uppercase' as const,
+}
+
+const inputSt: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 14px',
+  background: '#080C18',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 10,
+  color: '#fff',
+  fontSize: 15,
+  boxSizing: 'border-box' as const,
+  outline: 'none',
 }
