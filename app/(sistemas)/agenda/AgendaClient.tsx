@@ -342,43 +342,56 @@ export default function AgendaClient() {
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#CBD5E0', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>Próxima →</button>
           </div>
 
-          <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'auto' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#080C18' }}>
-              <div />
-              {diasSemana.map((dia, i) => {
-                const dStr = formatarDataLocal(dia)
-                const isHoje = dStr === hoje
-                const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
-                const diaAtivo = diasFuncionamento.includes(diaKey)
-                return (
-                  <div key={i} style={{ padding: '10px 8px', textAlign: 'center' as const, borderLeft: '1px solid rgba(255,255,255,0.06)', opacity: diaAtivo ? 1 : 0.4 }}>
-                    <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, margin: '0 0 6px', letterSpacing: 1 }}>{nomeDia(dia)}</p>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: isHoje ? '#D4A843' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                      <p style={{ color: isHoje ? '#080C18' : '#fff', fontSize: 14, fontWeight: isHoje ? 900 : 400, margin: 0 }}>{dia.getDate()}</p>
-                    </div>
-                    {!diaAtivo && <p style={{ color: '#4A5568', fontSize: 9, margin: '4px 0 0', letterSpacing: 1 }}>FECHADO</p>}
-                  </div>
-                )
-              })}
-            </div>
+          {/* Grid — único container com scroll, header e horários sempre alinhados */}
+          <div style={{ background: '#0D1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'auto', maxHeight: 620 }}>
+            {/* Largura mínima garante scroll horizontal no mobile sem quebrar */}
+            <div style={{ minWidth: 520 }}>
 
-            <div style={{ maxHeight: 560, overflowY: 'auto' as const }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', position: 'relative' as const }}>
-                <div style={{ position: 'relative' as const, height: alturaGrid }}>
+              {/* Header dias — sticky no topo */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '52px repeat(7, 1fr)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: '#080C18',
+                position: 'sticky' as const, top: 0, zIndex: 10,
+              }}>
+                <div style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }} />
+                {diasSemana.map((dia, i) => {
+                  const dStr = formatarDataLocal(dia)
+                  const isHoje = dStr === hoje
+                  const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
+                  const diaAtivo = diasFuncionamento.includes(diaKey)
+                  return (
+                    <div key={i} style={{ padding: '10px 4px', textAlign: 'center' as const, borderRight: '1px solid rgba(255,255,255,0.06)', opacity: diaAtivo ? 1 : 0.4 }}>
+                      <p style={{ color: '#4A5568', fontSize: 10, fontWeight: 700, margin: '0 0 4px', letterSpacing: 1 }}>{nomeDia(dia)}</p>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: isHoje ? '#D4A843' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                        <p style={{ color: isHoje ? '#080C18' : '#fff', fontSize: 13, fontWeight: isHoje ? 900 : 400, margin: 0 }}>{dia.getDate()}</p>
+                      </div>
+                      {!diaAtivo && <p style={{ color: '#4A5568', fontSize: 8, margin: '3px 0 0', letterSpacing: 1 }}>FECHADO</p>}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Corpo: coluna de horários + colunas dos dias — tudo no mesmo grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '52px repeat(7, 1fr)', position: 'relative' as const }}>
+
+                {/* Coluna de horários — sticky à esquerda */}
+                <div style={{ position: 'sticky' as const, left: 0, zIndex: 5, background: '#0D1220', borderRight: '1px solid rgba(255,255,255,0.06)', height: alturaGrid }}>
                   {slots.map((slot, i) => (
                     <div key={slot} style={{ position: 'absolute' as const, top: i * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', alignItems: 'flex-start', paddingTop: 4, paddingLeft: 6 }}>
-                      <p style={{ color: '#2D3748', fontSize: 10, margin: 0 }}>{slot}</p>
+                      <p style={{ color: '#2D3748', fontSize: 10, margin: 0, whiteSpace: 'nowrap' as const }}>{slot}</p>
                     </div>
                   ))}
                 </div>
 
+                {/* Colunas dos dias */}
                 {diasSemana.map((dia, di) => {
                   const dStr = formatarDataLocal(dia)
                   const diaKey = DIAS_SEMANA_KEY[dia.getDay()]
                   const diaAtivo = diasFuncionamento.includes(diaKey)
                   const agsNoDia = agendamentos.filter(a => a.data === dStr)
                   return (
-                    <div key={di} style={{ position: 'relative' as const, height: alturaGrid, borderLeft: '1px solid rgba(255,255,255,0.04)', background: !diaAtivo ? 'rgba(0,0,0,0.15)' : 'transparent' }}>
+                    <div key={di} style={{ position: 'relative' as const, height: alturaGrid, borderRight: '1px solid rgba(255,255,255,0.04)', background: !diaAtivo ? 'rgba(0,0,0,0.15)' : 'transparent' }}>
                       {slots.map((slot, si) => (
                         <div key={slot} onClick={() => { if (diaAtivo) abrirModal(undefined, dStr, slot) }}
                           style={{ position: 'absolute' as const, top: si * SLOT_HEIGHT, left: 0, right: 0, height: SLOT_HEIGHT, borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: diaAtivo ? 'pointer' : 'default' }} />
@@ -393,7 +406,6 @@ export default function AgendaClient() {
                         return (
                           <div key={ag.id}
                             style={{ position: 'absolute' as const, top: top + 2, left: 2, right: 2, height: altura, background: st.bg, border: `1px solid ${st.cor}66`, borderRadius: 6, padding: '4px 6px', overflow: 'hidden', zIndex: 1 }}>
-                            {/* Botão Gerar OS — sempre no topo direito quando possível */}
                             {podeGerarOS && (
                               <button
                                 onClick={e => gerarOSDoAgendamento(ag, e)}
@@ -415,6 +427,7 @@ export default function AgendaClient() {
                   )
                 })}
               </div>
+
             </div>
           </div>
         </div>
