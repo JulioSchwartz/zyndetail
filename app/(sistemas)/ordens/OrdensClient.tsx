@@ -102,6 +102,8 @@ export default function OrdensClient() {
   const [novoItemQtd, setNovoItemQtd]           = useState('1')
   const [novoItemTipo, setNovoItemTipo]         = useState<'servico' | 'material'>('servico')
   const [adicionandoItem, setAdicionandoItem]   = useState(false)
+  const [abaServico, setAbaServico]             = useState<'catalogo' | 'manual'>('catalogo')
+  const [servicoCatalogoId, setServicoCatalogoId] = useState('')
 
   useEffect(() => {
     async function init() {
@@ -172,6 +174,18 @@ export default function OrdensClient() {
     await supabase.from('os_itens').insert({ os_id: osSelecionada.id, empresa_id: empresaId, descricao: novoItemDesc.trim(), status: 'pendente', valor, tipo: novoItemTipo, quantidade: qtd })
     setNovoItemDesc(''); setNovoItemValor(''); setNovoItemQtd('1')
     await abrirDetalhe(osSelecionada.id)
+    setAdicionandoItem(false)
+  }
+
+  async function adicionarDoCatalogo() {
+    if (!servicoCatalogoId || !osSelecionada) return
+    setAdicionandoItem(true)
+    const serv = servicos.find(s => s.id === servicoCatalogoId)
+    if (serv) {
+      await supabase.from('os_itens').insert({ os_id: osSelecionada.id, empresa_id: empresaId, descricao: serv.nome, status: 'pendente', valor: serv.preco || 0, tipo: 'servico', quantidade: 1 })
+      setServicoCatalogoId('')
+      await abrirDetalhe(osSelecionada.id)
+    }
     setAdicionandoItem(false)
   }
 
@@ -639,18 +653,53 @@ export default function OrdensClient() {
                   </div>
                 )}
 
-                {/* Adicionar serviço manual */}
+                {/* Adicionar serviço — catálogo ou manual */}
                 {osSelecionada.status !== 'finalizada' && (
                   <div style={{ background: '#080C18', border: '1px solid rgba(212,168,67,0.12)', borderRadius: 10, padding: 14 }}>
-                    <p style={{ color: '#4A5568', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>+ ADICIONAR SERVIÇO AVULSO</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, marginBottom: 8 }}>
-                      <input style={inp} value={novoItemTipo === 'servico' ? novoItemDesc : ''} onChange={e => { setNovoItemTipo('servico'); setNovoItemDesc(e.target.value) }} placeholder="Ex: Polimento, Higienização..." onFocus={() => setNovoItemTipo('servico')} />
-                      <input style={{ ...inp, width: 100 }} type="text" inputMode="decimal" value={novoItemTipo === 'servico' ? novoItemValor : ''} onChange={e => { setNovoItemTipo('servico'); setNovoItemValor(e.target.value) }} placeholder="R$ valor" onFocus={() => setNovoItemTipo('servico')} />
-                      <button onClick={() => { setNovoItemTipo('servico'); adicionarItemManual() }} disabled={adicionandoItem || !novoItemDesc.trim() || novoItemTipo !== 'servico'}
-                        style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '0 16px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
-                        {adicionandoItem && novoItemTipo === 'servico' ? '...' : '+ ADD'}
-                      </button>
+                    {/* Abas */}
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                      {[{ key: 'catalogo', label: '📋 Do catálogo' }, { key: 'manual', label: '✏️ Manual' }].map(a => (
+                        <button key={a.key} onClick={() => setAbaServico(a.key as any)}
+                          style={{ flex: 1, background: abaServico === a.key ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${abaServico === a.key ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.08)'}`, color: abaServico === a.key ? '#D4A843' : '#4A5568', padding: '7px', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: abaServico === a.key ? 700 : 400 }}>
+                          {a.label}
+                        </button>
+                      ))}
                     </div>
+
+                    {/* Catálogo */}
+                    {abaServico === 'catalogo' && (
+                      servicos.length === 0 ? (
+                        <p style={{ color: '#4A5568', fontSize: 12, margin: 0, textAlign: 'center' as const }}>Nenhum serviço cadastrado no catálogo. <a href="/servicos" style={{ color: '#D4A843' }}>Cadastrar</a></p>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <select value={servicoCatalogoId} onChange={e => setServicoCatalogoId(e.target.value)}
+                            style={{ ...inp, flex: 1 }}>
+                            <option value="">Selecione um serviço...</option>
+                            {servicos.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.nome}{s.preco > 0 ? ` — R$ ${s.preco.toFixed(2).replace('.', ',')}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button onClick={adicionarDoCatalogo} disabled={adicionandoItem || !servicoCatalogoId}
+                            style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '0 16px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const, opacity: !servicoCatalogoId ? 0.5 : 1 }}>
+                            {adicionandoItem ? '...' : '+ ADD'}
+                          </button>
+                        </div>
+                      )
+                    )}
+
+                    {/* Manual */}
+                    {abaServico === 'manual' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8 }}>
+                        <input style={inp} value={novoItemTipo === 'servico' ? novoItemDesc : ''} onChange={e => { setNovoItemTipo('servico'); setNovoItemDesc(e.target.value) }} placeholder="Ex: Polimento, Higienização..." onFocus={() => setNovoItemTipo('servico')} />
+                        <input style={{ ...inp, width: 100 }} type="text" inputMode="decimal" value={novoItemTipo === 'servico' ? novoItemValor : ''} onChange={e => { setNovoItemTipo('servico'); setNovoItemValor(e.target.value) }} placeholder="R$ valor" onFocus={() => setNovoItemTipo('servico')} />
+                        <button onClick={() => { setNovoItemTipo('servico'); adicionarItemManual() }} disabled={adicionandoItem || !novoItemDesc.trim() || novoItemTipo !== 'servico'}
+                          style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)', border: 'none', color: '#080C18', padding: '0 16px', borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                          {adicionandoItem && novoItemTipo === 'servico' ? '...' : '+ ADD'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
