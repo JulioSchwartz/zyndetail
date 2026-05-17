@@ -22,12 +22,14 @@ export async function POST(req: Request) {
     }
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email, password, email_confirm: false,
+      email, password, email_confirm: true,
     })
 
     if (authError) {
       if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
-        return NextResponse.json({ error: 'Este email já está cadastrado. Faça login.' }, { status: 409 })
+        return NextResponse.json({
+          error: 'Este e-mail já está cadastrado em um produto Zyncompany. Use outro e-mail para realizar o cadastro.'
+        }, { status: 409 })
       }
       return NextResponse.json({ error: authError.message }, { status: 400 })
     }
@@ -80,9 +82,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao vincular usuário.' }, { status: 500 })
     }
 
+    // Gera sessão para login automático
+    const { data: sessionData } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    })
+
     const resend = new Resend(process.env.RESEND_API_KEY!)
 
-    // Email de boas-vindas para o usuário
+    // Email de boas-vindas
     try {
       await resend.emails.send({
         from: 'Zyndetail <noreply@zyncompany.com.br>',
@@ -141,7 +149,12 @@ export async function POST(req: Request) {
       console.error('Erro ao enviar notificação:', emailErr)
     }
 
-    return NextResponse.json({ success: true, empresaId: empresa.id })
+    return NextResponse.json({
+      success: true,
+      empresaId: empresa.id,
+      accessToken: sessionData?.properties?.access_token || null,
+      refreshToken: sessionData?.properties?.refresh_token || null,
+    })
 
   } catch (err) {
     console.error('Erro cadastro Zyndetail:', err)
