@@ -152,8 +152,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       empresaId: empresa.id,
-      accessToken: sessionData?.properties?.access_token || null,
-      refreshToken: sessionData?.properties?.refresh_token || null,
+      accessToken: (sessionData?.properties as any)?.access_token || null,
+      refreshToken: (sessionData?.properties as any)?.refresh_token || null,
     })
 
   } catch (err) {
